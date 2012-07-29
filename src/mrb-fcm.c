@@ -397,6 +397,11 @@ typedef enum
 	SCREEN_CONF_FSTART_DRAW  = 131,
 	SCREEN_CONF_FSTART_IDLE  = 132,
 	SCREEN_CONF_FSTART_CONFIRM = 133,
+
+	SCREEN_CONF_PKTINT_SETUP = 140,
+	SCREEN_CONF_PKTINT_DRAW = 141,
+	SCREEN_CONF_PKTINT_IDLE = 142,
+
 	
 	SCREEN_DONT_KNOW = 255
 
@@ -415,13 +420,14 @@ typedef struct
 
 const ConfigurationOption configurationOptions[] = 
 {
-//   012345678901234
+//   01234567890123456
   { "Real 12/24 Ind", SCREEN_CONF_R1224_SETUP },
   { "Real Time     ", SCREEN_CONF_RTIME_SETUP },
   { "Real Date     ", 0 },  
   { "Fast 12/24 Ind", SCREEN_CONF_F1224_SETUP },
   { "Fast Ratio     ", SCREEN_CONF_FRATIO_SETUP },  
   { "Fast Start Time", SCREEN_CONF_FSTART_SETUP },
+  { "Time Pkt Interval", SCREEN_CONF_PKTINT_SETUP },
   
 };
 
