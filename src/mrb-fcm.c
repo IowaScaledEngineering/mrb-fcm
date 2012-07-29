@@ -71,15 +71,9 @@ volatile uint8_t status=0;
 
 #define FAST_MODE (status & STATUS_FAST_ACTIVE)
 
-/* Scale factor defines the fast time ratio, or the number of minutes that pass to each real minute */
-/* Options:
-
-1 = 1:1, 2 = 2:1, 3 = 3:1, 4 = 4:1
-6 = 6:1, 8 = 8:1, 10 = 10:1, 12 = 12:1
-16 = 16:1, 20 = 20:1, 24 = 24:1, 30 = 30:1
-32 = 32:1, 36 = 36:1, 40 = 40:1, 60 = 60:1
-
-*/
+#define EE_ADDR_FAST_START_H   0x30
+#define EE_ADDR_FAST_START_M   0x31
+#define EE_ADDR_FAST_START_S   0x32
 
 uint8_t scaleFactor = 1;
 
@@ -101,6 +95,26 @@ void initTimeData(TimeData* t)
 	t->seconds = t->minutes = t->hours = 0;
 	t->year = 2012;
 	t->month = t->day = 1;
+}
+
+void FastTimeStartToFlash(TimeData* t)
+{
+	eeprom_write_byte((uint8_t*)(uint16_t)EE_ADDR_FAST_START_H, t->hours);
+	eeprom_write_byte((uint8_t*)(uint16_t)EE_ADDR_FAST_START_M, t->minutes);
+	eeprom_write_byte((uint8_t*)(uint16_t)EE_ADDR_FAST_START_S, t->seconds);			
+}
+void FlashToFastTimeStart(TimeData* t)
+{
+	initTimeData(t);
+	t->hours = eeprom_read_byte((uint8_t*)(uint16_t)EE_ADDR_FAST_START_H);
+	t->minutes = eeprom_read_byte((uint8_t*)(uint16_t)EE_ADDR_FAST_START_M);
+	t->seconds = eeprom_read_byte((uint8_t*)(uint16_t)EE_ADDR_FAST_START_S);			
+
+	if (t->hours > 23 || t->minutes > 59 || t->seconds > 59)
+	{
+		initTimeData(t);
+		FastTimeStartToFlash(t);
+	}
 }
 
 volatile uint8_t clock_A=0, clock_B=0, debounced_state=0;
@@ -370,6 +384,19 @@ typedef enum
 	SCREEN_CONF_F1224_DRAW = 111,
 	SCREEN_CONF_F1224_IDLE = 112,
 
+	SCREEN_CONF_FRATIO_SETUP = 115,
+	SCREEN_CONF_FRATIO_DRAW = 116,
+	SCREEN_CONF_FRATIO_IDLE = 117,
+	
+	SCREEN_CONF_RTIME_SETUP = 120,
+	SCREEN_CONF_RTIME_DRAW  = 121,
+	SCREEN_CONF_RTIME_IDLE  = 122,
+	SCREEN_CONF_RTIME_CONFIRM = 123,
+
+	SCREEN_CONF_FSTART_SETUP = 130,
+	SCREEN_CONF_FSTART_DRAW  = 131,
+	SCREEN_CONF_FSTART_IDLE  = 132,
+	SCREEN_CONF_FSTART_CONFIRM = 133,
 	
 	SCREEN_DONT_KNOW = 255
 
@@ -386,17 +413,39 @@ typedef struct
 	ScreenState configScreen;
 } ConfigurationOption;
 
-ConfigurationOption configurationOptions[] = 
+const ConfigurationOption configurationOptions[] = 
 {
 //   012345678901234
   { "Real 12/24 Ind", SCREEN_CONF_R1224_SETUP },
-  { "Real Time     ", 0 },
+  { "Real Time     ", SCREEN_CONF_RTIME_SETUP },
   { "Real Date     ", 0 },  
   { "Fast 12/24 Ind", SCREEN_CONF_F1224_SETUP },
-  { "Fast Ratio     ", 0 },  
-  { "Fast Start Time", 0 },
+  { "Fast Ratio     ", SCREEN_CONF_FRATIO_SETUP },  
+  { "Fast Start Time", SCREEN_CONF_FSTART_SETUP },
   
 };
+
+const ConfigurationOption ratioOptions[] = 
+{
+  { "1:1", 1 },
+  { "2:1", 2 },
+  { "3:1", 3 },
+  { "4:1", 4 },
+  { "6:1", 6 },
+  { "8:1", 8 },
+  { "10:1", 10 },
+  { "12:1", 12 },
+  { "16:1", 16 },
+  { "20:1", 20 },
+  { "24:1", 24 },
+  { "30:1", 30 },
+  { "32:1", 32 },
+  { "36:1", 36 },
+  { "40:1", 40 },
+  { "60:1", 60 }
+};
+
+#define NUM_RATIO_OPTIONS  (sizeof(ratioOptions)/sizeof(ConfigurationOption))
 
 #define NUM_CONF_OPTIONS  (sizeof(configurationOptions)/sizeof(ConfigurationOption))
 
@@ -408,6 +457,7 @@ int main(void)
 	uint8_t idler=0;
 	uint8_t configMenuOption = 0, confSaveVar;
 	uint8_t idlerChars[4] = {'/', '-', '\\', '|'};
+	TimeData tempTime;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
 	// Application initialization
 	init();
@@ -421,6 +471,8 @@ int main(void)
 	// Initialize MRBus core
 	mrbusInit();
 
+	FlashToFastTimeStart(&fastTime);
+	
 	ds1302_transact(0x81, 1, ds1302Buffer);
 	if (ds1302Buffer[0] & 0x80)
 	{
@@ -537,6 +589,8 @@ CONF:
 				else if (SOFTKEY_4 & buttonsPressed)
 				{
 					screenState = SCREEN_CONF_MENU_DRAW;
+					configMenuOption = 0;
+
 				}
 				else if (FAST_MODE && (SOFTKEY_2 & buttonsPressed))
 				{
@@ -544,8 +598,8 @@ CONF:
 				}
 				else if (FAST_MODE && (SOFTKEY_3 & buttonsPressed))
 				{
+					FlashToFastTimeStart(&fastTime);
 					screenState = SCREEN_CONF_MENU_DRAW;
-					configMenuOption = 0;
 				}
 				
 				// Buttons handled, clear
@@ -699,6 +753,349 @@ CONF:
 				// Buttons handled, clear
 				buttonsPressed = 0;	
 				break;
+
+			case SCREEN_CONF_FRATIO_SETUP:
+				{
+					uint8_t i;
+					confSaveVar = 0;
+					for(i=0; i<NUM_RATIO_OPTIONS; i++)
+					{
+						if (scaleFactor == ratioOptions[i].configScreen)
+						{
+							confSaveVar = i;
+							break;
+						}
+					}
+				}
+				screenState = SCREEN_CONF_FRATIO_DRAW;
+				break;
+
+			case SCREEN_CONF_FRATIO_DRAW:
+				lcd_clrscr();
+				drawSoftKeys((confSaveVar>0)?" UP ":"",  (confSaveVar < NUM_RATIO_OPTIONS-1)?"DOWN":"", "SLCT", "CNCL");
+				{
+					uint8_t i, baseOptionCount = (configMenuOption / 3) * 3;
+					for(i=0; i<3; i++)
+					{
+						if (i+baseOptionCount >= NUM_RATIO_OPTIONS)
+							continue;
+						if (i+baseOptionCount == confSaveVar)
+						{
+							lcd_gotoxy(0, i);
+							lcd_putc('>');
+						}
+
+						lcd_gotoxy(2, i);
+						lcd_puts(ratioOptions[i+baseOptionCount].configName);
+					}
+				}
+				screenState = SCREEN_CONF_FRATIO_IDLE;
+				break;
+				
+			case SCREEN_CONF_FRATIO_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					if (confSaveVar > 0)
+						confSaveVar--;
+					screenState = SCREEN_CONF_FRATIO_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					if (confSaveVar < NUM_CONF_OPTIONS-1)
+						confSaveVar++;
+					screenState = SCREEN_CONF_FRATIO_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					lcd_clrscr();
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed && (configurationOptions[configMenuOption].configScreen))
+				{
+					scaleFactor = ratioOptions[confSaveVar].configScreen;
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				
+				// Buttons handled, clear
+				buttonsPressed = 0;			
+				break;
+				
+			case SCREEN_CONF_RTIME_SETUP:
+				memcpy(&tempTime, &realTime, sizeof(TimeData));
+				confSaveVar = 0;
+				lcd_gotoxy(0,0);
+				lcd_puts("Current Real Time:");
+				// Intentional fall-through
+
+			case SCREEN_CONF_RTIME_DRAW:
+				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
+				lcd_gotoxy(0, 1);
+				if (status & STATUS_REAL_AMPM)
+					printDec2Dig(tempTime.hours);
+				else
+					printDec2DigWZero(tempTime.hours);
+				lcd_putc(':');
+				printDec2DigWZero(tempTime.minutes);
+				lcd_putc(':');
+				printDec2DigWZero(tempTime.seconds);
+				lcd_putc(' ');
+
+				if (status & STATUS_REAL_AMPM)
+				{
+					if (tempTime.hours < 12)
+						lcd_putc('A');
+					else
+						lcd_putc('P');
+					lcd_putc('M');
+				}
+				screenState = SCREEN_CONF_RTIME_IDLE;
+
+				confSaveVar %= 3;
+				switch(confSaveVar)
+				{
+					case 0:
+						// Hours
+						lcd_gotoxy(1,1);
+						break;
+					case 1:
+						// Minutes
+						lcd_gotoxy(4,1);
+						break;
+					case 2:
+						// Seconds
+						lcd_gotoxy(7,1);
+						break;
+				}
+
+				break;
+
+			case SCREEN_CONF_RTIME_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							// Hours
+							tempTime.hours = (tempTime.hours+1) % 24;
+							break;
+						case 1:
+							// Minutes
+							tempTime.minutes = (tempTime.minutes+1) % 60;
+							break;
+						case 2:
+							// Seconds
+							tempTime.seconds = (tempTime.seconds+1) % 60;
+							break;
+					}
+					screenState = SCREEN_CONF_RTIME_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							// Hours
+							if (tempTime.hours)
+								tempTime.hours--;
+							else
+								tempTime.hours = 23;
+							break;
+						case 1:
+							// Minutes
+							if (tempTime.minutes)
+								tempTime.minutes--;
+							else
+								tempTime.minutes = 59;
+							break;
+						case 2:
+							// Seconds
+							if (tempTime.seconds)
+								tempTime.seconds--;
+							else
+								tempTime.seconds = 59;
+							break;
+					}
+					screenState = SCREEN_CONF_RTIME_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					confSaveVar = (confSaveVar+1)%3;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					drawSoftKeys("BACK",  "", "SAVE", "CNCL");
+					screenState = SCREEN_CONF_RTIME_CONFIRM;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+			case SCREEN_CONF_RTIME_CONFIRM:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_RTIME_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					memcpy(&realTime, &tempTime, sizeof(TimeData));
+
+					// Save crap back to RTC
+					// Set write enable
+					ds1302Buffer[0] = 0x80;
+					ds1302_transact(0x8E, 1, ds1302Buffer);
+
+					// Write time registers
+					ds1302Buffer[0] = (realTime.seconds % 10) | (0x30 & (((realTime.seconds/10)%10)<<4));
+					ds1302Buffer[1] = (realTime.minutes % 10) | (0x30 & (((realTime.minutes/10)%10)<<4));
+					ds1302Buffer[2] = (realTime.hours % 10) | (0x30 & (((realTime.hours/10)%10)<<4));
+					ds1302_transact(0xBE, 3, ds1302Buffer);
+
+					// Clear WR enable
+					ds1302Buffer[0] = 0x00;
+					ds1302_transact(0x8E, 1, ds1302Buffer);
+
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+			case SCREEN_CONF_FSTART_SETUP:
+				FlashToFastTimeStart(&tempTime);
+				confSaveVar = 0;
+				lcd_gotoxy(0,0);
+				lcd_puts("Fast Clk Start Time:");
+				// Intentional fall-through
+
+			case SCREEN_CONF_FSTART_DRAW:
+				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
+				lcd_gotoxy(0, 1);
+				if (status & STATUS_FAST_AMPM)
+					printDec2Dig(tempTime.hours);
+				else
+					printDec2DigWZero(tempTime.hours);
+				lcd_putc(':');
+				printDec2DigWZero(tempTime.minutes);
+				lcd_putc(':');
+				printDec2DigWZero(tempTime.seconds);
+				lcd_putc(' ');
+
+				if (status & STATUS_FAST_AMPM)
+				{
+					if (tempTime.hours < 12)
+						lcd_putc('A');
+					else
+						lcd_putc('P');
+					lcd_putc('M');
+				}
+				screenState = SCREEN_CONF_FSTART_IDLE;
+
+				confSaveVar %= 3;
+				switch(confSaveVar)
+				{
+					case 0:
+						// Hours
+						lcd_gotoxy(1,1);
+						break;
+					case 1:
+						// Minutes
+						lcd_gotoxy(4,1);
+						break;
+					case 2:
+						// Seconds
+						lcd_gotoxy(7,1);
+						break;
+				}
+
+				break;
+
+			case SCREEN_CONF_FSTART_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							// Hours
+							tempTime.hours = (tempTime.hours+1) % 24;
+							break;
+						case 1:
+							// Minutes
+							tempTime.minutes = (tempTime.minutes+1) % 60;
+							break;
+						case 2:
+							// Seconds
+							tempTime.seconds = (tempTime.seconds+1) % 60;
+							break;
+					}
+					screenState = SCREEN_CONF_FSTART_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							// Hours
+							if (tempTime.hours)
+								tempTime.hours--;
+							else
+								tempTime.hours = 23;
+							break;
+						case 1:
+							// Minutes
+							if (tempTime.minutes)
+								tempTime.minutes--;
+							else
+								tempTime.minutes = 59;
+							break;
+						case 2:
+							// Seconds
+							if (tempTime.seconds)
+								tempTime.seconds--;
+							else
+								tempTime.seconds = 59;
+							break;
+					}
+					screenState = SCREEN_CONF_FSTART_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					confSaveVar = (confSaveVar+1)%3;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					drawSoftKeys("BACK",  "", "SAVE", "CNCL");
+					screenState = SCREEN_CONF_FSTART_CONFIRM;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+			case SCREEN_CONF_FSTART_CONFIRM:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_FSTART_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					memcpy(&fastTime, &tempTime, sizeof(TimeData));
+					FastTimeStartToFlash(&fastTime);
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+				
 			
 			default:
 				lcd_gotoxy(0,1);
