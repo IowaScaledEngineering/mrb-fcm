@@ -461,7 +461,7 @@ int main(void)
 	uint8_t ds1302Buffer[10];
 	uint8_t buttonsPressed=0, colon=0;
 	uint8_t idler=0;
-	uint8_t configMenuOption = 0, confSaveVar;
+	uint8_t configMenuOption = 0, confSaveVar=0;
 	uint8_t idlerChars[4] = {'/', '-', '\\', '|'};
 	TimeData tempTime;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
