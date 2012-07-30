@@ -679,7 +679,7 @@ const uint8_t LowerLeftDiag[8] =
 };
 
 
-const uint8_t LowerLeftBlock[8] =
+const uint8_t LowerBlock[8] =
 {
 	0b00000000,
 	0b00000000,
@@ -733,14 +733,14 @@ void lcd_setup_bigdigits()
 	lcd_setup_custom(1, UpperBlock);
 	lcd_setup_custom(2, UpperRightDiag);
 	lcd_setup_custom(3, LowerLeftDiag);
-	lcd_setup_custom(4, LowerLeftBlock);
+	lcd_setup_custom(4, LowerBlock);
 	lcd_setup_custom(5, LowerRightDiag);
 	lcd_setup_custom(6, MiddleBlock);
 	lcd_gotoxy(0,0);
 
 }
 
-const uint8_t bigDigits[10][6] = 
+const uint8_t bigDigits[13][6] = 
 {
 	// 0
 	{ 0, 1, 2, 3, 4, 5},
@@ -770,14 +770,24 @@ const uint8_t bigDigits[10][6] =
 	{ 0, 6, 2, 3, 4, 5},
 		
 	// 9
-	{ 0, 6, 2, ' ', ' ', 255}
+	{ 0, 6, 2, ' ', ' ', 255},
+	
+	// H - 10
+	{ 0, 4, 2, 3, ' ', 5},
+
+	// l - 11
+	{ 255, ' ', ' ', 3, 4, 4},
+
+	// d - 12
+	{ 4, 4, 255, 3, 4, 5},
+	
 };
 
 void lcd_putc_big(uint8_t position, uint8_t digit)
 {
 	uint8_t column;
 	uint8_t i;
-	if (digit > 9)
+	if (digit > 12)
 		digit = 0;
 	
 	switch(position)
