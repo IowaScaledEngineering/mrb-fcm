@@ -50,6 +50,7 @@ extern uint8_t mrbus_activity;
 extern uint8_t mrbus_rx_buffer[MRBUS_BUFFER_SIZE];
 extern uint8_t mrbus_tx_buffer[MRBUS_BUFFER_SIZE];
 extern uint8_t mrbus_state;
+extern uint8_t mrbus_priority;
 
 uint8_t mrbus_dev_addr = 0;
 
@@ -571,7 +572,7 @@ int main(void)
 
 	// Initialize MRBus core
 	mrbusInit();
-
+	mrbus_priority = 1;  // We're a clock, highest priority
 
 	drawSplashScreen();
 
