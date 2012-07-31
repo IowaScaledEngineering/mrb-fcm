@@ -62,8 +62,10 @@ uint8_t mrbus_dev_addr = 0;
 // and the call to this function in the main function
 
 volatile uint8_t ticks;
-volatile uint8_t decisecs;
-volatile uint16_t fastDecisecs;
+volatile uint16_t decisecs=0;
+volatile uint16_t updateXmitInterval=20;
+volatile uint16_t screenUpdateDecisecs=0;
+volatile uint16_t fastDecisecs=0;
 volatile uint8_t status=0;
 
 #define STATUS_READ_INPUTS 0x01
@@ -88,6 +90,7 @@ typedef struct
 	uint8_t seconds;
 	uint8_t minutes;
 	uint8_t hours;
+	uint8_t dayOfWeek;
 	uint8_t day;
 	uint8_t month;
 	uint16_t year;
@@ -99,6 +102,7 @@ TimeData fastTime;
 void initTimeData(TimeData* t)
 {
 	t->seconds = t->minutes = t->hours = 0;
+	t->dayOfWeek = 0;
 	t->year = 2012;
 	t->month = t->day = 1;
 }
@@ -262,6 +266,7 @@ void initialize100HzTimer(void)
 	ticks = 0;
 	decisecs = 0;
 	fastDecisecs = 0;
+	screenUpdateDecisecs = 0;
 }
 
 ISR(TIMER1_OVF_vect)
@@ -277,6 +282,7 @@ ISR(TIMER1_OVF_vect)
 		if (STATUS_FAST_ACTIVE == (status & (STATUS_FAST_ACTIVE | STATUS_FAST_HOLDING)))
 			fastDecisecs += scaleFactor;
 		decisecs++;
+		screenUpdateDecisecs++;
 	}
 }
 
@@ -380,7 +386,7 @@ PktIgnore:
 void init(void)
 {
 	uint8_t i, j;
-	
+	uint8_t ds1302Buffer[10];	
 	// Kill watchdog
     MCUSR = 0;
 	wdt_reset();
@@ -392,10 +398,35 @@ void init(void)
 	ds1302_init();
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
-	
-	initTimeData(&realTime);
-	initTimeData(&fastTime);
 
+	initTimeData(&realTime);
+	
+	ds1302_transact(0xBF, 7, ds1302Buffer);
+	realTime.seconds = (ds1302Buffer[0] & 0x0F) + 10 * (((ds1302Buffer[0] & 0x70)>>4));
+	realTime.minutes = (ds1302Buffer[1] & 0x0F) + 10 * (((ds1302Buffer[1] & 0x70)>>4));
+	realTime.hours = (ds1302Buffer[2] & 0x0F) + 10 * (((ds1302Buffer[2] & 0x30)>>4));			
+	realTime.day = (ds1302Buffer[3] & 0x0F) + 10 * (((ds1302Buffer[3] & 0x30)>>4));
+	realTime.month = (ds1302Buffer[4] & 0x0F) + (ds1302Buffer[4] & 0x10)?10:0;
+	realTime.year = 2000 + (ds1302Buffer[3] & 0x0F) + 10 * (ds1302Buffer[3]>>4);
+
+	if (ds1302Buffer[0] & 0x80)
+	{
+		// Crap, the clock's been halted, get it started again
+		// Set write enable
+		ds1302Buffer[0] = 0x00;
+		ds1302_transact(0x8E, 1, ds1302Buffer);
+		// Clear the clock halting bit
+		ds1302Buffer[0] &= 0x7F;
+		ds1302_transact(0x80, 1, ds1302Buffer);
+	}
+
+	// Clear DS1302 WR enable
+	ds1302Buffer[0] = 0x80;
+	ds1302_transact(0x8E, 1, ds1302Buffer);	
+
+	initTimeData(&fastTime);
+	FlashToFastTimeStart(&fastTime);
+	
 	scaleFactor = 0;	
 	j = eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO);
 	for(i=0; i<NUM_RATIO_OPTIONS; i++)
@@ -415,6 +446,19 @@ void init(void)
 	
 	// Initialize MRBus address from EEPROM address 1
 	mrbus_dev_addr = eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR);
+	
+	updateXmitInterval = (uint16_t)eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_L) 
+			| (((uint16_t)eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_H)) << 8);
+
+	updateXmitInterval = max(1, updateXmitInterval);
+			
+	// If the update interval is garbage, set it to 2 seconds
+	if (0xFFFF == updateXmitInterval)
+	{
+		eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_L, 20);
+		eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_H, 0);
+		updateXmitInterval = 20;
+	}
 }
 
 void drawBigHold()
@@ -512,10 +556,8 @@ int main(void)
 {
 	uint8_t ds1302Buffer[10];
 	uint8_t buttonsPressed=0, colon=0;
-	uint8_t idler=0;
 	uint8_t configMenuOption = 0, confSaveVar=0;
-	uint16_t loopCount=0, loopPerSec=0;
-	uint8_t idlerChars[4] = {'/', '-', '\\', '|'};
+	uint8_t vitalChange=0;
 	TimeData tempTime;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
 	// Application initialization
@@ -530,15 +572,6 @@ int main(void)
 	// Initialize MRBus core
 	mrbusInit();
 
-	FlashToFastTimeStart(&fastTime);
-	
-	ds1302_transact(0x81, 1, ds1302Buffer);
-	if (ds1302Buffer[0] & 0x80)
-	{
-		ds1302Buffer[0] &= 0x7F;
-		// Crap, the clock's been halted, get it started again
-		ds1302_transact(0x80, 1, ds1302Buffer);
-	}
 
 	drawSplashScreen();
 
@@ -546,7 +579,7 @@ int main(void)
 
 	while (1)
 	{
-		loopCount++;
+//		loopCount++;
 #ifdef MRBEE
 		mrbeePoll();
 #endif
@@ -632,10 +665,7 @@ CONF:
 					drawBigTime(&realTime, status & STATUS_REAL_AMPM);
 					drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
 				}
-				lcd_gotoxy(0,2);
-				printHex(loopPerSec >> 8);
-				printHex(loopPerSec & 0xFF);
-				
+			
 				screenState = SCREEN_MAIN_IDLE;
 				break;
 
@@ -644,6 +674,7 @@ CONF:
 				if (SOFTKEY_1 & buttonsPressed)
 				{
 					status ^= STATUS_FAST_ACTIVE;
+					vitalChange = 1;
 					if (FAST_MODE)
 						status |= FASTHOLD_MODE;
 					screenState = SCREEN_MAIN_DRAW;
@@ -657,11 +688,13 @@ CONF:
 				else if (FAST_MODE && (SOFTKEY_2 & buttonsPressed))
 				{
 					status ^= STATUS_FAST_HOLDING;
+					vitalChange = 1;
 					screenState = SCREEN_MAIN_UPDATE_TIME;
 				}
 				else if (FAST_MODE && (SOFTKEY_3 & buttonsPressed))
 				{
 					FlashToFastTimeStart(&fastTime);
+					vitalChange = 1;
 					screenState = SCREEN_MAIN_UPDATE_TIME;
 				}
 				
@@ -1154,15 +1187,20 @@ CONF:
 		
 
 		// FIXME: Do any module-specific behaviours here in the loop.
-		if (decisecs >= 10)
+		if (screenUpdateDecisecs >= 10)
 		{
-			loopPerSec = loopCount;
-			loopCount = 0;
-			ds1302_transact(0xBF, 4, ds1302Buffer);
-			realTime.hours = (ds1302Buffer[2] & 0x0F) + 10 * (((ds1302Buffer[2] & 0x30)>>4));
-			realTime.minutes = (ds1302Buffer[1] & 0x0F) + 10 * (((ds1302Buffer[1] & 0x70)>>4));
-			realTime.seconds = (ds1302Buffer[0] & 0x0F) + 10 * (((ds1302Buffer[0] & 0x70)>>4));
+			// Reading optimizer
+			// If we don't know the date or if we're in the range where we're at risk of 
+			// changing dates
 
+			ds1302_transact(0xBF, 7, ds1302Buffer);
+			realTime.seconds = (ds1302Buffer[0] & 0x0F) + 10 * (((ds1302Buffer[0] & 0x70)>>4));
+			realTime.minutes = (ds1302Buffer[1] & 0x0F) + 10 * (((ds1302Buffer[1] & 0x70)>>4));
+			realTime.hours = (ds1302Buffer[2] & 0x0F) + 10 * (((ds1302Buffer[2] & 0x30)>>4));			
+			realTime.day = (ds1302Buffer[3] & 0x0F) + 10 * (((ds1302Buffer[3] & 0x30)>>4));
+			realTime.month = (ds1302Buffer[4] & 0x0F) + (ds1302Buffer[4] & 0x10)?10:0;
+			realTime.year = 2000 + (ds1302Buffer[3] & 0x0F) + 10 * (ds1302Buffer[3]>>4);
+			
 			switch(screenState)
 			{
 				case SCREEN_MAIN_IDLE:
@@ -1184,12 +1222,57 @@ CONF:
 					break;
 			}
 			
-			decisecs -= 10;
+			screenUpdateDecisecs -= 10;
 			lcd_gotoxy(19,0);
-			lcd_putc(idlerChars[idler]);
-			idler = (idler + 1) % sizeof(idlerChars);
 			
 		}		
+
+		/* If we need to send a packet and we're not already busy... */
+		if (decisecs >= updateXmitInterval)
+		{
+			vitalChange = 1;
+			decisecs -= updateXmitInterval;
+		}			
+		
+		
+		if (vitalChange && !(mrbus_state & (MRBUS_TX_BUF_ACTIVE | MRBUS_TX_PKT_READY)))
+		{
+			uint8_t flags = 0;
+			
+			if (FAST_MODE)
+				flags |= 0x01;
+			if (FASTHOLD_MODE)
+				flags |= 0x02;
+
+			if (status & STATUS_REAL_AMPM)
+				flags |= 0x04;
+
+			if (status & STATUS_FAST_AMPM)
+				flags |= 0x08;
+
+
+#define STATUS_FAST_AMPM   0x04
+#define STATUS_REAL_AMPM   0x08
+			
+			mrbus_tx_buffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
+			mrbus_tx_buffer[MRBUS_PKT_DEST] = 0xFF;
+			mrbus_tx_buffer[MRBUS_PKT_LEN] = 17;			
+			mrbus_tx_buffer[5] = 'T';
+			mrbus_tx_buffer[6] = realTime.hours;
+			mrbus_tx_buffer[7] = realTime.minutes;
+			mrbus_tx_buffer[8] = realTime.seconds;
+			mrbus_tx_buffer[9] = flags;
+			mrbus_tx_buffer[10] = fastTime.hours;
+			mrbus_tx_buffer[11] = fastTime.minutes;			
+			mrbus_tx_buffer[12] = fastTime.seconds;
+			mrbus_tx_buffer[13] = scaleFactor;
+			mrbus_tx_buffer[14] = 0xFF & (realTime.year>>4);
+			mrbus_tx_buffer[15] = ((realTime.year<<4) & 0xF0) | (0x0F & realTime.month);
+			mrbus_tx_buffer[16] = realTime.day;
+			mrbus_state |= MRBUS_TX_PKT_READY;
+			vitalChange = 0;
+		}
+
 
 
 		// If we have a packet to be transmitted, try to send it here
