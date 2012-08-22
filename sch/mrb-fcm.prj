@@ -1,0 +1,6 @@
+schematics mrb-fcm.sch
+output-name ../pcb/mrb-fcm
+skip-m4
+elements-dir ../../../footprints
+
+
