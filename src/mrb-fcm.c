@@ -169,6 +169,9 @@ uint8_t debounce(uint8_t raw_inputs)
   return(changes & ~(debounced_state));
 }
 
+const char* monthNames[13] = { "Unk", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+const uint8_t monthDays[13] = { 31, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }; // Days in each month
+
 typedef enum
 {
 	SCREEN_MAIN_DRAW = 0,
@@ -177,6 +180,9 @@ typedef enum
 
 	SCREEN_CONF_MENU_DRAW = 10,
 	SCREEN_CONF_MENU_IDLE = 11,
+
+	SCREEN_FAST_RESET_DRAW = 14,
+	SCREEN_FAST_RESET_IDLE = 15,
 
 	SCREEN_CONF_R1224_SETUP = 100,
 	SCREEN_CONF_R1224_DRAW = 101,
@@ -204,6 +210,10 @@ typedef enum
 	SCREEN_CONF_PKTINT_DRAW = 141,
 	SCREEN_CONF_PKTINT_IDLE = 142,
 
+	SCREEN_CONF_RDATE_SETUP = 150,
+	SCREEN_CONF_RDATE_DRAW  = 151,
+	SCREEN_CONF_RDATE_IDLE  = 152,
+	
 	
 	SCREEN_DONT_KNOW = 255
 
@@ -224,7 +234,7 @@ const ConfigurationOption configurationOptions[] =
 {
   { "Real 12/24 Ind", SCREEN_CONF_R1224_SETUP },
   { "Real Time     ", SCREEN_CONF_RTIME_SETUP },
-  { "Real Date     ", 0 },  
+  { "Real Date     ", SCREEN_CONF_RDATE_SETUP },  
   { "Fast 12/24 Ind", SCREEN_CONF_F1224_SETUP },
   { "Fast Ratio     ", SCREEN_CONF_FRATIO_SETUP },  
   { "Fast Start Time", SCREEN_CONF_FSTART_SETUP },
@@ -670,6 +680,36 @@ CONF:
 				screenState = SCREEN_MAIN_IDLE;
 				break;
 
+			case SCREEN_FAST_RESET_DRAW:
+				lcd_clrscr();
+				lcd_gotoxy(0,3);
+				lcd_puts("!! CONFIRM !!");
+				lcd_gotoxy(1,2);
+				lcd_puts("Reset Fast Clock");
+				lcd_gotoxy(1,3);
+				lcd_puts("to Start Time?");
+				drawSoftKeys("YES",  "", "", "NO");
+				screenState = SCREEN_FAST_RESET_IDLE;
+				break;
+			
+			case SCREEN_FAST_RESET_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_FAST_RESET_DRAW;
+					FlashToFastTimeStart(&fastTime);
+					vitalChange = 1;
+					screenState = SCREEN_MAIN_UPDATE_TIME;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				
+				// Buttons handled, clear
+				buttonsPressed = 0;
+				break;
+
 			case SCREEN_MAIN_IDLE:
 				// Switchy goodness
 				if (SOFTKEY_1 & buttonsPressed)
@@ -694,9 +734,7 @@ CONF:
 				}
 				else if (FAST_MODE && (SOFTKEY_3 & buttonsPressed))
 				{
-					FlashToFastTimeStart(&fastTime);
-					vitalChange = 1;
-					screenState = SCREEN_MAIN_UPDATE_TIME;
+					screenState = SCREEN_FAST_RESET_DRAW;
 				}
 				
 				// Buttons handled, clear
@@ -918,7 +956,198 @@ CONF:
 				// Buttons handled, clear
 				buttonsPressed = 0;			
 				break;
+
+			case SCREEN_CONF_RDATE_SETUP:
+				memcpy(&tempTime, &realTime, sizeof(TimeData));
+				// Sanity test
+				if (tempTime.month > 12 || tempTime.month < 1)
+					tempTime.month = 1;
+				if (tempTime.day < 1)
+					tempTime.day = 1;
+				if (tempTime.day > monthDays[tempTime.month])
+					tempTime.day = monthDays[tempTime.month];
+				if (tempTime.year < 2000 || tempTime.year > 2099)
+					tempTime.year = 2012;
 				
+				confSaveVar = 0;
+				lcd_gotoxy(0,0);
+				lcd_puts("Current Real Date:");
+
+				// Intentional fall-through
+
+			case SCREEN_CONF_RDATE_DRAW:
+				lcd_gotoxy(0, 1);
+				printDec2Dig(tempTime.day);
+				lcd_putc(' ');
+				lcd_puts(monthName[tempTime.month]);
+				lcd_puts(" 20");
+				printDec2DigWZero(tempTime.year % 100);
+				lcd_gotoxy(0,2);
+				lcd_puts("            ");
+				switch(confSaveVar)
+				{
+					case 0: // Day
+						lcd_gotoxy(0, 2);
+						lcd_puts("^^");
+					
+					case 1: // Month
+						lcd_gotoxy(3, 2);
+						lcd_puts("^^^");						
+						break;
+						
+					case 2: // Year
+						lcd_gotoxy(7, 2);
+						lcd_puts("  ^^");
+						break;
+				}
+
+
+				{
+					// Check that our day is actually in range  Otherwise, throw up "DATE ERR"
+					uint8_t dateError = 0;
+					uint8_t monthDaysWithLeap = monthDays[tempTime.month];
+					if (tempTime.month == 2 && isLeapYear(tempTime.year))
+						monthDaysWithLeap++;
+
+					if (tempTime.day > monthDaysWithLeap)
+						dateError = 1;
+
+					lcd_gotoxy(15,1);
+					lcd_puts(dateError?"DATE":"    ");
+					lcd_gotoxy(15,2);
+					lcd_puts(dateError?"ERR ":"    ");
+
+					drawSoftKeys(" ++ ",  " -- ", " >> ", dateError?"    ":" GO ");
+				}
+				screenState = SCREEN_CONF_RTIME_IDLE;
+				break;
+
+
+			case SCREEN_CONF_RDATE_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							// Day of Month
+							if (tempTime.day < 31)
+								tempTime.day++;
+							else
+								tempTime.day = 1;
+							break;
+
+						case 1:
+							// Month
+							if (tempTime.month < 12)
+								tempTime.month++;
+							else
+								tempTime.month = 1;
+							break;
+
+						case 2:
+							// Year
+							tempTime.year++;
+							if(tempTime.year > 2099 || tempTime.year < 2012)
+								tempTime.year = 2012;
+							break;
+					}
+					screenState = SCREEN_CONF_RTIME_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							// Day of Month
+							if (tempTime.day > 1)
+								tempTime.day--;
+							else
+								tempTime.day = 31;
+							break;
+
+						case 1:
+							// Month
+							if (tempTime.month > 1)
+								tempTime.month--;
+							else
+								tempTime.month = 12;
+							break;
+
+						case 2:
+							// Seconds
+							if (tempTime.year > 2012)
+								tempTime.year--;
+							else
+								tempTime.year = 2099;
+							break;
+					}
+					screenState = SCREEN_CONF_RDATE_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					confSaveVar = (confSaveVar+1)%3;
+					screenState = SCREEN_CONF_RDATE_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					uint8_t monthDaysWithLeap = monthDays[tempTime.month];
+
+					screenState = SCREEN_CONF_RDATE_DRAW;
+
+					if (tempTime.month == 2 && isLeapYear(tempTime.year))
+						monthDaysWithLeap++;
+
+					if (tempTime.day <= monthDaysWithLeap)
+					{
+						drawSoftKeys("BACK",  "", "SAVE", "CNCL");
+						screenState = SCREEN_CONF_RDATE_CONFIRM;
+					}
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+
+			case SCREEN_CONF_RDATE_CONFIRM:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_RDATE_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					memcpy(&realTime, &tempTime, sizeof(TimeData));
+
+					// Save crap back to RTC
+					// Set write enable
+					ds1302Buffer[0] = 0x00;
+					ds1302_transact(0x8E, 1, ds1302Buffer);
+
+					// Write time registers
+					ds1302Buffer[0] = (tempTime.seconds % 10) | (0x70 & (((tempTime.seconds/10)%10)<<4));
+					ds1302_transact(0x80, 1, ds1302Buffer);
+					ds1302Buffer[0] = (tempTime.minutes % 10) | (0x70 & (((tempTime.minutes/10)%10)<<4));
+					ds1302_transact(0x82, 1, ds1302Buffer);
+					ds1302Buffer[0] = (tempTime.hours % 10) | (0x30 & (((tempTime.hours/10)%10)<<4));
+					ds1302_transact(0x84, 1, ds1302Buffer);
+
+					// Clear WR enable
+					ds1302Buffer[0] = 0x80;
+					ds1302_transact(0x8E, 1, ds1302Buffer);
+
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				buttonsPressed = 0;	
+				break;
+							
+			// END OF DATE CONFIG SCREENS
+			
+			// START OF TIME CONFIG SCREENS
+
 			case SCREEN_CONF_RTIME_SETUP:
 				memcpy(&tempTime, &realTime, sizeof(TimeData));
 				confSaveVar = 0;
@@ -929,8 +1158,7 @@ CONF:
 			case SCREEN_CONF_RTIME_DRAW:
 				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
 				lcd_gotoxy(0, 1);
-				if (status & STATUS_REAL_AMPM)
-					printDec2Dig(tempTime.hours);
+				printDec2Dig(tempTime.);
 				else
 					printDec2DigWZero(tempTime.hours);
 				lcd_putc(':');
