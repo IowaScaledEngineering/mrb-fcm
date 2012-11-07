@@ -214,12 +214,21 @@ typedef enum
 	SCREEN_CONF_PKTINT_SETUP = 140,
 	SCREEN_CONF_PKTINT_DRAW = 141,
 	SCREEN_CONF_PKTINT_IDLE = 142,
-
+	SCREEN_CONF_PKTINT_CONFIRM = 143,
+	
 	SCREEN_CONF_RDATE_SETUP = 150,
 	SCREEN_CONF_RDATE_DRAW  = 151,
 	SCREEN_CONF_RDATE_IDLE  = 152,
 	SCREEN_CONF_RDATE_CONFIRM = 153,
+
+	SCREEN_CONF_ADDR_SETUP = 160,
+	SCREEN_CONF_ADDR_DRAW  = 161,
+	SCREEN_CONF_ADDR_IDLE  = 162,
+	SCREEN_CONF_ADDR_CONFIRM = 163,	
 	
+	SCREEN_CONF_DIAG_SETUP = 250,
+	SCREEN_CONF_DIAG_DRAW  = 251,
+	SCREEN_CONF_DIAG_IDLE  = 252,
 	
 	SCREEN_DONT_KNOW = 255
 
@@ -245,7 +254,8 @@ const ConfigurationOption configurationOptions[] =
   { "Fast Ratio     ", SCREEN_CONF_FRATIO_SETUP },  
   { "Fast Start Time", SCREEN_CONF_FSTART_SETUP },
   { "Time Pkt Interval", SCREEN_CONF_PKTINT_SETUP },
-  
+  { "Node Address",   SCREEN_CONF_ADDR_SETUP },
+  { "Diagnostics",    SCREEN_CONF_DIAG_SETUP },  
 };
 
 const ConfigurationOption ratioOptions[] = 
@@ -305,6 +315,24 @@ ISR(TIMER1_OVF_vect)
 	}
 }
 
+
+volatile uint16_t busVoltageAccum=0;
+volatile uint16_t busVoltage=0;
+volatile uint8_t busVoltageCount=0;
+
+ISR(ADC_vect)
+{
+	busVoltageAccum += ADC;
+	if (++busVoltageCount >= 64)
+	{
+		busVoltageAccum = busVoltageAccum / 64;
+        //At this point, we're at (Vbus/3) / 5 * 1024
+        //So multiply by 150, divide by 1024, or multiply by 75 and divide by 512
+        busVoltage = ((uint32_t)busVoltageAccum * 75) / 512;
+		busVoltageAccum = 0;
+		busVoltageCount = 0;
+	}
+}
 
 void PktHandler(void)
 {
@@ -438,6 +466,19 @@ void init(void)
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
 
+
+	// Setup ADC
+	ADMUX  = 0x46;  // AVCC reference; ADC6 input
+	ADCSRA = _BV(ADATE) | _BV(ADIF) | _BV(ADPS2) | _BV(ADPS1); // 128 prescaler
+	ADCSRB = 0x00;
+	DIDR0  = 0x00;  // No digitals were harmed in the making of this ADC
+
+	busVoltage = 0;
+	busVoltageAccum = 0;
+	busVoltageCount = 0;
+	ADCSRA |= _BV(ADEN) | _BV(ADSC) | _BV(ADIE) | _BV(ADIF);
+
+	// Setup real time data
 	initTimeData(&realTime);
 	readDS1302(ds1302Buffer);
 
@@ -601,6 +642,8 @@ int main(void)
 	uint8_t configMenuOption = 0, confSaveVar=0;
 	uint8_t vitalChange=0;
 	TimeData tempTime;
+	uint8_t tempVar = 0;
+	uint16_t tempVar16 = 0;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
 	// Application initialization
 	init();
@@ -686,6 +729,8 @@ CONF:
 				// Intentional fall-through
 
 			case SCREEN_MAIN_UPDATE_TIME:
+				lcd_gotoxy(0,2);
+				printDec3Dig(busVoltage);
 				lcd_gotoxy(16,0);
 				if (FAST_MODE)
 				{
@@ -1430,6 +1475,231 @@ CONF:
 					screenState = SCREEN_CONF_MENU_DRAW;
 				}
 				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+			case SCREEN_CONF_DIAG_SETUP:
+				lcd_gotoxy(0,0);
+				lcd_puts("Diagnostics");
+				lcd_gotoxy(0,1);
+				lcd_puts("Bus:");
+				printDec2Dig(busVoltage / 10);
+				lcd_putc('.');
+				lcd_putc((busVoltage % 10) + '0');					
+				lcd_putc('V');
+				
+				lcd_gotoxy(11,1);
+				lcd_puts("Addr:0x");
+				printHex(mrbus_dev_addr);
+				drawSoftKeys("REDO",  "", "", "BACK");
+				screenState = SCREEN_CONF_DIAG_IDLE;
+				break;
+
+			case SCREEN_CONF_DIAG_IDLE:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_DIAG_SETUP;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				buttonsPressed = 0;		
+				break;
+
+			case SCREEN_CONF_PKTINT_SETUP:
+				tempVar16 = updateXmitInterval;
+				confSaveVar = 0;
+				lcd_gotoxy(0,0);
+				lcd_puts("Time Pkt Interval:");
+				lcd_gotoxy(7,1);
+				lcd_puts("in 1/10th sec");
+				// Intentional fall-through
+
+			case SCREEN_CONF_PKTINT_DRAW:
+				lcd_gotoxy(0, 1);
+				printDec5Dig(tempVar16);
+				lcd_gotoxy(0,2);
+				lcd_puts("            ");
+				lcd_gotoxy(2 + confSaveVar, 2);
+				lcd_puts("^");
+				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
+				screenState = SCREEN_CONF_ADDR_IDLE;
+				break;
+
+			case SCREEN_CONF_PKTINT_IDLE:
+				// FIXME - these should only adjust the digit being addressed
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							tempVar16 += 10000;
+							break;
+						case 1:
+							tempVar16 += 1000;
+							break;
+						case 2:
+							tempVar16 += 100;
+							break;
+						case 3:
+							tempVar16 += 10;
+							break;
+						case 4:
+							tempVar16 += 1;
+							break;
+					}
+					screenState = SCREEN_CONF_PKTINT_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							tempVar16 -= 10000;
+							break;
+						case 1:
+							tempVar16 -= 1000;
+							break;
+						case 2:
+							tempVar16 -= 100;
+							break;
+						case 3:
+							tempVar16 -= 10;
+							break;
+						case 4:
+							tempVar16 -= 1;
+							break;
+					}
+					screenState = SCREEN_CONF_PKTINT_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					confSaveVar = (confSaveVar+1)%5;
+					screenState = SCREEN_CONF_PKTINT_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					drawSoftKeys("BACK",  "", "SAVE", "CNCL");
+					screenState = SCREEN_CONF_PKTINT_CONFIRM;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+
+			case SCREEN_CONF_PKTINT_CONFIRM:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_PKTINT_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+
+					eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_L, 0xFF & tempVar16);
+					eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_H, 0xFF & (tempVar16>>8));
+
+					updateXmitInterval = (uint16_t)eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_L) 
+						| (((uint16_t)eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_H)) << 8);
+
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				buttonsPressed = 0;	
+				break;
+
+			// END PACKET INTERVAL
+
+
+				
+			case SCREEN_CONF_ADDR_SETUP:
+				tempVar = mrbus_dev_addr;
+				if (0x00 == tempVar || 0xFF == tempVar)
+					tempVar = 0x01;
+
+				confSaveVar = 0;
+				lcd_gotoxy(0,0);
+				lcd_puts("Fast Clock Addr:");
+
+				// Intentional fall-through
+
+			case SCREEN_CONF_ADDR_DRAW:
+				lcd_gotoxy(0, 1);
+				lcd_puts("0x");
+				printHex(tempVar);
+				lcd_gotoxy(0,2);
+				lcd_puts("            ");
+
+				lcd_gotoxy(2 + confSaveVar, 2);
+				lcd_puts("^");
+				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
+				screenState = SCREEN_CONF_ADDR_IDLE;
+				break;
+
+
+			case SCREEN_CONF_ADDR_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					if (0 == confSaveVar)
+						tempVar += 0x10;
+					else
+						tempVar += 0x01;
+
+					if (tempVar == 0xFF)
+						tempVar = 0xFE;
+					else if (tempVar == 0x00)
+						tempVar = 0x01;
+
+					screenState = SCREEN_CONF_ADDR_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					if (0 == confSaveVar)
+						tempVar -= 0x10;
+					else
+						tempVar -= 0x01;
+
+					if (tempVar == 0xFF)
+						tempVar = 0xFE;
+					else if (tempVar == 0x00)
+						tempVar = 0x01;
+
+					screenState = SCREEN_CONF_ADDR_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					confSaveVar = (confSaveVar+1)%2;
+					screenState = SCREEN_CONF_ADDR_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					drawSoftKeys("BACK",  "", "SAVE", "CNCL");
+					screenState = SCREEN_CONF_ADDR_CONFIRM;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+
+			case SCREEN_CONF_ADDR_CONFIRM:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_ADDR_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR, tempVar);
+					mrbus_dev_addr = eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR);
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
 				buttonsPressed = 0;	
 				break;
 				

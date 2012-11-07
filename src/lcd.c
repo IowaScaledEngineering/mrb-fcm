@@ -615,6 +615,45 @@ void printHex(uint8_t val)
 	lcd_putc(bin2hex[val & 0x0F]);
 }
 
+void printDec3Dig(uint8_t val)
+{
+	if (val >= 100)
+		lcd_putc('0' + ((val/100)%10));
+	else
+		lcd_putc(' ');
+	
+	if (val >= 10)
+		lcd_putc('0' + ((val/10)%10));
+	else
+		lcd_putc(' ');
+	lcd_putc('0' + (val%10));
+}
+
+void printDec5Dig(uint16_t val)
+{
+
+	if (val >= 10000)
+		lcd_putc('0' + ((val/10000)%10));
+	else
+		lcd_putc(' ');
+		
+	if (val >= 1000)
+		lcd_putc('0' + ((val/1000)%10));
+	else
+		lcd_putc(' ');
+
+	if (val >= 100)
+		lcd_putc('0' + ((val/100)%10));
+	else
+		lcd_putc(' ');
+	
+	if (val >= 10)
+		lcd_putc('0' + ((val/10)%10));
+	else
+		lcd_putc(' ');
+	lcd_putc('0' + (val%10));
+}
+
 void printDec2Dig(uint8_t val)
 {
 	if (val >= 10)
