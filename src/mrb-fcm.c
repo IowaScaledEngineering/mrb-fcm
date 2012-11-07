@@ -75,6 +75,11 @@ volatile uint8_t status=0;
 #define STATUS_REAL_AMPM   0x08
 #define STATUS_FAST_HOLDING 0x10
 
+#define TIME_FLAGS_DISP_FAST       0x01
+#define TIME_FLAGS_DISP_FAST_HOLD  0x02
+#define TIME_FLAGS_DISP_REAL_AMPM  0x04
+#define TIME_FLAGS_DISP_FAST_AMPM  0x08
+
 #define FAST_MODE (status & STATUS_FAST_ACTIVE)
 #define FASTHOLD_MODE (status & STATUS_FAST_HOLDING)
 
@@ -213,6 +218,7 @@ typedef enum
 	SCREEN_CONF_RDATE_SETUP = 150,
 	SCREEN_CONF_RDATE_DRAW  = 151,
 	SCREEN_CONF_RDATE_IDLE  = 152,
+	SCREEN_CONF_RDATE_CONFIRM = 153,
 	
 	
 	SCREEN_DONT_KNOW = 255
@@ -266,6 +272,8 @@ const ConfigurationOption ratioOptions[] =
 
 #define NUM_CONF_OPTIONS  (sizeof(configurationOptions)/sizeof(ConfigurationOption))
 
+
+#define isLeapYear(y)  (0 == ((y) % 4))
 
 void initialize100HzTimer(void)
 {
@@ -979,7 +987,7 @@ CONF:
 				lcd_gotoxy(0, 1);
 				printDec2Dig(tempTime.day);
 				lcd_putc(' ');
-				lcd_puts(monthName[tempTime.month]);
+				lcd_puts(monthNames[tempTime.month]);
 				lcd_puts(" 20");
 				printDec2DigWZero(tempTime.year % 100);
 				lcd_gotoxy(0,2);
@@ -1158,7 +1166,8 @@ CONF:
 			case SCREEN_CONF_RTIME_DRAW:
 				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
 				lcd_gotoxy(0, 1);
-				printDec2Dig(tempTime.);
+				if (status & STATUS_REAL_AMPM)
+					printDec2Dig(tempTime.hours);
 				else
 					printDec2DigWZero(tempTime.hours);
 				lcd_putc(':');
@@ -1467,7 +1476,7 @@ CONF:
 		if (vitalChange && !(mrbus_state & (MRBUS_TX_BUF_ACTIVE | MRBUS_TX_PKT_READY)))
 		{
 			uint8_t flags = 0;
-			
+
 			if (FAST_MODE)
 				flags |= 0x01;
 			if (FASTHOLD_MODE)
