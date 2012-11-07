@@ -402,6 +402,21 @@ PktIgnore:
 	return;	
 }
 
+#define LCD_BACKLIGHT_PIN  PD3
+#define BUZZER_PIN PC4
+
+void readDS1302(uint8_t* ds1302Buffer)
+{
+	ds1302_transact(0xBF, 7, ds1302Buffer);
+	realTime.seconds = (ds1302Buffer[0] & 0x0F) + 10 * (((ds1302Buffer[0] & 0x70)>>4));
+	realTime.minutes = (ds1302Buffer[1] & 0x0F) + 10 * (((ds1302Buffer[1] & 0x70)>>4));
+	realTime.hours = (ds1302Buffer[2] & 0x0F) + 10 * (((ds1302Buffer[2] & 0x30)>>4));			
+	realTime.day = (ds1302Buffer[3] & 0x0F) + 10 * (((ds1302Buffer[3] & 0x30)>>4));
+	realTime.month = (ds1302Buffer[4] & 0x0F) + ((ds1302Buffer[4] & 0x10)?10:0);
+	realTime.year = 2000 + (ds1302Buffer[6] & 0x0F) + 10 * (ds1302Buffer[6]>>4);
+}
+
+
 void init(void)
 {
 	uint8_t i, j;
@@ -413,20 +428,18 @@ void init(void)
 
 	DDRD &= ~(0xF2);
 	DDRC &= ~(0x10);
+	DDRD |= _BV(LCD_BACKLIGHT_PIN);
+	DDRC |= _BV(BUZZER_PIN);
+	
+	PORTD |= _BV(LCD_BACKLIGHT_PIN);
+	PORTC &= ~_BV(BUZZER_PIN);
 		
 	ds1302_init();
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
 
 	initTimeData(&realTime);
-	
-	ds1302_transact(0xBF, 7, ds1302Buffer);
-	realTime.seconds = (ds1302Buffer[0] & 0x0F) + 10 * (((ds1302Buffer[0] & 0x70)>>4));
-	realTime.minutes = (ds1302Buffer[1] & 0x0F) + 10 * (((ds1302Buffer[1] & 0x70)>>4));
-	realTime.hours = (ds1302Buffer[2] & 0x0F) + 10 * (((ds1302Buffer[2] & 0x30)>>4));			
-	realTime.day = (ds1302Buffer[3] & 0x0F) + 10 * (((ds1302Buffer[3] & 0x30)>>4));
-	realTime.month = (ds1302Buffer[4] & 0x0F) + (ds1302Buffer[4] & 0x10)?10:0;
-	realTime.year = 2000 + (ds1302Buffer[3] & 0x0F) + 10 * (ds1302Buffer[3]>>4);
+	readDS1302(ds1302Buffer);
 
 	if (ds1302Buffer[0] & 0x80)
 	{
@@ -541,6 +554,16 @@ void drawSoftKeys(char* key1Text, char* key2Text, char* key3Text, char* key4Text
 	lcd_puts(key3Text);
 	lcd_gotoxy(15,3);
 	lcd_puts(key4Text);
+}
+
+void drawLittleDate(TimeData* t)
+{
+	lcd_gotoxy(9,2);
+	printDec2Dig(t->day);
+	lcd_putc(' ');
+	lcd_puts(monthNames[t->month]);
+	lcd_puts(" 20");
+	printDec2DigWZero(t->year % 100);
 }
 
 void drawLittleTime(TimeData* t, uint8_t useAMPM)
@@ -682,7 +705,8 @@ CONF:
 					else
 						lcd_puts("24");
 					drawBigTime(&realTime, status & STATUS_REAL_AMPM);
-					drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
+					drawLittleDate(&realTime);
+//					drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
 				}
 			
 				screenState = SCREEN_MAIN_IDLE;
@@ -997,6 +1021,7 @@ CONF:
 					case 0: // Day
 						lcd_gotoxy(0, 2);
 						lcd_puts("^^");
+						break;
 					
 					case 1: // Month
 						lcd_gotoxy(3, 2);
@@ -1027,7 +1052,7 @@ CONF:
 
 					drawSoftKeys(" ++ ",  " -- ", " >> ", dateError?"    ":" GO ");
 				}
-				screenState = SCREEN_CONF_RTIME_IDLE;
+				screenState = SCREEN_CONF_RDATE_IDLE;
 				break;
 
 
@@ -1060,7 +1085,7 @@ CONF:
 								tempTime.year = 2012;
 							break;
 					}
-					screenState = SCREEN_CONF_RTIME_DRAW;
+					screenState = SCREEN_CONF_RDATE_DRAW;
 				}
 				else if (SOFTKEY_2 & buttonsPressed)
 				{
@@ -1083,7 +1108,7 @@ CONF:
 							break;
 
 						case 2:
-							// Seconds
+							// Year
 							if (tempTime.year > 2012)
 								tempTime.year--;
 							else
@@ -1132,12 +1157,12 @@ CONF:
 					ds1302_transact(0x8E, 1, ds1302Buffer);
 
 					// Write time registers
-					ds1302Buffer[0] = (tempTime.seconds % 10) | (0x70 & (((tempTime.seconds/10)%10)<<4));
-					ds1302_transact(0x80, 1, ds1302Buffer);
-					ds1302Buffer[0] = (tempTime.minutes % 10) | (0x70 & (((tempTime.minutes/10)%10)<<4));
-					ds1302_transact(0x82, 1, ds1302Buffer);
-					ds1302Buffer[0] = (tempTime.hours % 10) | (0x30 & (((tempTime.hours/10)%10)<<4));
-					ds1302_transact(0x84, 1, ds1302Buffer);
+					ds1302Buffer[0] = (tempTime.day % 10) | (0x30 & (((tempTime.day/10)%10)<<4));
+					ds1302_transact(0x86, 1, ds1302Buffer);
+					ds1302Buffer[0] = (tempTime.month % 10) | ((tempTime.month >= 10)?0x10:0);
+					ds1302_transact(0x88, 1, ds1302Buffer);
+					ds1302Buffer[0] = (tempTime.year % 10) | (0xF0 & (((tempTime.year/10)%10)<<4));
+					ds1302_transact(0x8C, 1, ds1302Buffer);
 
 					// Clear WR enable
 					ds1302Buffer[0] = 0x80;
@@ -1430,14 +1455,7 @@ CONF:
 			// Reading optimizer
 			// If we don't know the date or if we're in the range where we're at risk of 
 			// changing dates
-
-			ds1302_transact(0xBF, 7, ds1302Buffer);
-			realTime.seconds = (ds1302Buffer[0] & 0x0F) + 10 * (((ds1302Buffer[0] & 0x70)>>4));
-			realTime.minutes = (ds1302Buffer[1] & 0x0F) + 10 * (((ds1302Buffer[1] & 0x70)>>4));
-			realTime.hours = (ds1302Buffer[2] & 0x0F) + 10 * (((ds1302Buffer[2] & 0x30)>>4));			
-			realTime.day = (ds1302Buffer[3] & 0x0F) + 10 * (((ds1302Buffer[3] & 0x30)>>4));
-			realTime.month = (ds1302Buffer[4] & 0x0F) + (ds1302Buffer[4] & 0x10)?10:0;
-			realTime.year = 2000 + (ds1302Buffer[3] & 0x0F) + 10 * (ds1302Buffer[3]>>4);
+			readDS1302(ds1302Buffer);
 			
 			switch(screenState)
 			{
