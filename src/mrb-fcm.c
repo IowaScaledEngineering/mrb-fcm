@@ -35,8 +35,6 @@ LICENSE:
 #define mrbus_rx_buffer mrbee_rx_buffer
 #define mrbus_tx_buffer mrbee_tx_buffer
 #define mrbus_state mrbee_state
-#define MRBUS_TX_PKT_READY MRBEE_TX_PKT_READY
-#define MRBUS_RX_PKT_READY MRBEE_RX_PKT_READY
 #define mrbux_rx_buffer mrbee_rx_buffer
 #define mrbus_tx_buffer mrbee_tx_buffer
 #define mrbus_state mrbee_state
@@ -50,7 +48,11 @@ extern uint8_t mrbus_activity;
 extern uint8_t mrbus_rx_buffer[MRBUS_BUFFER_SIZE];
 extern uint8_t mrbus_tx_buffer[MRBUS_BUFFER_SIZE];
 extern uint8_t mrbus_state;
+
+// MRBee doesn't have a concept of arbitration, so there's no priority level
+#ifndef MRBEE
 extern uint8_t mrbus_priority;
+#endif
 
 uint8_t mrbus_dev_addr = 0;
 
@@ -711,7 +713,13 @@ int main(void)
 
 	// Initialize MRBus core
 	mrbusInit();
+	
+	// MRBee doesn't have a concept of arbitration, so there's no priority level
+#ifndef MRBEE
 	mrbus_priority = 1;  // We're a clock, highest priority
+#endif
+	
+
 
 	drawSplashScreen();
 
