@@ -629,14 +629,8 @@ void printDec3Dig(uint8_t val)
 	lcd_putc('0' + (val%10));
 }
 
-void printDec5Dig(uint16_t val)
+void printDec4Dig(uint16_t val)
 {
-
-	if (val >= 10000)
-		lcd_putc('0' + ((val/10000)%10));
-	else
-		lcd_putc(' ');
-		
 	if (val >= 1000)
 		lcd_putc('0' + ((val/1000)%10));
 	else
@@ -779,7 +773,7 @@ void lcd_setup_bigdigits()
 
 }
 
-const uint8_t bigDigits[13][6] = 
+const uint8_t bigDigits[14][6] = 
 {
 	// 0
 	{ 0, 1, 2, 3, 4, 5},
@@ -820,13 +814,16 @@ const uint8_t bigDigits[13][6] =
 	// d - 12
 	{ 4, 4, 255, 3, 4, 5},
 	
+	// space - 13
+	{ ' ', ' ', ' ',  ' ', ' ', ' ' }
+	
 };
 
 void lcd_putc_big(uint8_t position, uint8_t digit)
 {
 	uint8_t column;
 	uint8_t i;
-	if (digit > 12)
+	if (digit > 13)
 		digit = 0;
 	
 	switch(position)
