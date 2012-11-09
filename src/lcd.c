@@ -615,6 +615,13 @@ void printHex(uint8_t val)
 	lcd_putc(bin2hex[val & 0x0F]);
 }
 
+void printDec3DigWZero(uint16_t val)
+{
+	lcd_putc('0' + ((val/100)%10));
+	lcd_putc('0' + ((val/10)%10));
+	lcd_putc('0' + (val%10));
+}
+
 void printDec3Dig(uint8_t val)
 {
 	if (val >= 100)
