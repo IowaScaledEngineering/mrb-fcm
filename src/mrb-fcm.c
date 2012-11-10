@@ -108,6 +108,8 @@ volatile uint8_t status=0;
 #define EE_ADDR_FAST_RATIO_H   0x3A
 #define EE_ADDR_FAST_RATIO_L   0x3B
 
+uint32_t loopCount = 0;
+
 void blankCursorLine()
 {
 	lcd_gotoxy(0,2);
@@ -709,6 +711,7 @@ int main(void)
 	TimeData tempTime;
 	uint8_t tempVar = 0;
 	uint16_t tempVar16 = 0;
+	uint16_t kloopsPerSec=0;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
 	// Application initialization
 	init();
@@ -733,9 +736,12 @@ int main(void)
 
 	sei();	
 
+	loopCount = 0;
+	kloopsPerSec = 0;
+
 	while (1)
 	{
-//		loopCount++;
+		loopCount++;
 #ifdef MRBEE
 		mrbeePoll();
 #endif
@@ -1679,7 +1685,12 @@ int main(void)
 				lcd_gotoxy(11,1);
 				lcd_puts("Addr:0x");
 				printHex(mrbus_dev_addr);
-				drawSoftKeys("REDO",  "", "", "BACK");
+				
+				lcd_gotoxy(12,0);
+				printDec4Dig(kloopsPerSec);
+				lcd_puts("kl/s");
+				
+				drawSoftKeys("RFSH",  "", "", "BACK");
 				screenState = SCREEN_CONF_DIAG_IDLE;
 				break;
 
@@ -1960,14 +1971,19 @@ int main(void)
 					lcd_putc(colon);
 					break;
 				
+				case SCREEN_CONF_DIAG_IDLE:
+					// Get loop iterations here
+					screenState = SCREEN_CONF_DIAG_SETUP;
+					break;
+				
 				case SCREEN_MAIN_DRAW:
 				default:
 					break;
 			}
 			
 			screenUpdateDecisecs -= 10;
-			lcd_gotoxy(19,0);
-			
+			kloopsPerSec = loopCount / 1000;
+			loopCount = 0;
 		}		
 
 		/* If we need to send a packet and we're not already busy... */
