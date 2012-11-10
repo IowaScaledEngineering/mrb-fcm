@@ -173,6 +173,7 @@ void FastTimeStartToFlash(TimeData* t, uint8_t whichStart)
 void FlashToFastTimeStart(TimeData* t, uint8_t whichStart)
 {
 	initTimeData(t);
+	whichStart *= 3;
 	t->hours = eeprom_read_byte((uint8_t*)EE_ADDR_FAST_START1_H + whichStart);
 	t->minutes = eeprom_read_byte((uint8_t*)EE_ADDR_FAST_START1_M + whichStart);
 	t->seconds = eeprom_read_byte((uint8_t*)EE_ADDR_FAST_START1_S + whichStart);
@@ -290,39 +291,17 @@ const ConfigurationOption configurationOptions[] =
   { "Real Date     ", SCREEN_CONF_RDATE_SETUP },  
   { "Fast 12/24",      SCREEN_CONF_F1224_SETUP },
   { "Fast Ratio     ", SCREEN_CONF_FRATIO_SETUP },  
+  { "Fast Start Hold", SCREEN_CONF_FSHOLD_SETUP },  
   { "Fast Start Time 1", SCREEN_CONF_FSTART1_SETUP },
   { "Fast Start Time 2", SCREEN_CONF_FSTART2_SETUP },
   { "Fast Start Time 3", SCREEN_CONF_FSTART3_SETUP },    
-  { "Fast Start Hold", SCREEN_CONF_FSHOLD_SETUP },  
   { "Time Pkt Interval", SCREEN_CONF_PKTINT_SETUP },
   { "Node Address",   SCREEN_CONF_ADDR_SETUP },
   { "Diagnostics",    SCREEN_CONF_DIAG_SETUP },  
 };
 
-const ConfigurationOption ratioOptions[] = 
-{
-  { "1:1", 1 },
-  { "2:1", 2 },
-  { "3:1", 3 },
-  { "4:1", 4 },
-  { "6:1", 6 },
-  { "8:1", 8 },
-  { "10:1", 10 },
-  { "12:1", 12 },
-  { "16:1", 16 },
-  { "20:1", 20 },
-  { "24:1", 24 },
-  { "30:1", 30 },
-  { "32:1", 32 },
-  { "36:1", 36 },
-  { "40:1", 40 },
-  { "60:1", 60 }
-};
-
 #define NUM_RATIO_OPTIONS  (sizeof(ratioOptions)/sizeof(ConfigurationOption))
-
 #define NUM_CONF_OPTIONS  (sizeof(configurationOptions)/sizeof(ConfigurationOption))
-
 
 #define isLeapYear(y)  (0 == ((y) % 4))
 
@@ -840,14 +819,12 @@ int main(void)
 					{
 						FlashToFastTimeStart(&fs, i);
 						lcd_gotoxy(0 + 5*i,3);
-						printDec2Dig(fs.hours);
-						printDec2Dig(fs.minutes);
+						printDec2DigWZero(fs.hours);
+						printDec2DigWZero(fs.minutes);
 					}
 
 					lcd_gotoxy(15,3);
 					lcd_puts("CNCL");
-
-					drawSoftKeys("YES",  "", "", "NO");
 				}
 
 
@@ -898,7 +875,7 @@ int main(void)
 				{
 					status ^= STATUS_FAST_HOLDING;
 					vitalChange = 1;
-					screenState = SCREEN_MAIN_UPDATE_TIME;
+					screenState = SCREEN_MAIN_DRAW;
 				}
 				else if (FAST_MODE && (SOFTKEY_3 & buttonsPressed))
 				{
@@ -1658,6 +1635,7 @@ int main(void)
 				else if (SOFTKEY_3 & buttonsPressed)
 				{
 					confSaveVar = (confSaveVar+1)%3;
+					screenState = SCREEN_CONF_FSTART_DRAW;
 				}
 				else if (SOFTKEY_4 & buttonsPressed)
 				{
