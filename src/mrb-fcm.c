@@ -663,7 +663,12 @@ void drawLittleFast(TimeData* t)
 		lcd_puts("FC:");
 	
 	if (status & STATUS_FAST_AMPM)
-		printDec2Dig(t->hours%12);
+	{
+		uint8_t hours = t->hours % 12;
+		if (0 == hours)
+			hours = 12;
+		printDec2Dig(hours);
+	}
 	else
 		printDec2DigWZero(t->hours);
 	printDec2DigWZero(t->minutes);	
@@ -687,7 +692,13 @@ void drawLittleTime(TimeData* t, uint8_t useAMPM)
 	lcd_gotoxy(10,2);
 	
 	if (useAMPM)
-		printDec2Dig(t->hours % 12);
+	{
+		uint8_t hours = t->hours % 12;
+		if (0 == hours)
+			hours = 12;
+
+		printDec2Dig(hours);
+	}
 	else
 		printDec2DigWZero(t->hours);
 	lcd_putc(':');
@@ -1403,7 +1414,12 @@ int main(void)
 				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
 				lcd_gotoxy(0, 1);
 				if (status & STATUS_REAL_AMPM)
-					printDec2Dig(tempTime.hours);
+				{
+					uint8_t hours = tempTime.hours % 12;
+					if (0 == hours)
+						hours = 12;
+					printDec2Dig(hours);
+				}
 				else
 					printDec2DigWZero(tempTime.hours);
 				lcd_putc(':');
@@ -1558,7 +1574,13 @@ int main(void)
 				lcd_gotoxy(0, 1);
 				
 				if (status & STATUS_FAST_AMPM)
-					printDec2Dig(tempTime.hours % 12);
+				{
+					uint8_t hours = tempTime.hours % 12;
+					if (0 == hours)
+						hours = 12;
+
+					printDec2Dig(hours);
+				}
 				else
 					printDec2DigWZero(tempTime.hours);
 				lcd_putc(':');
