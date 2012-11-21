@@ -56,6 +56,11 @@ extern uint8_t mrbus_priority;
 
 uint8_t mrbus_dev_addr = 0;
 
+#define TH_TIMEOUT_RESET 255
+
+uint8_t thSourceAddr = 0;
+uint8_t thTimeout = 0;
+
 // ******** Start 100 Hz Timer - Very Accurate Version
 
 // Initialize a 100Hz timer for use in triggering events.
@@ -73,12 +78,20 @@ volatile uint8_t scaleTenthsAccum = 0;
 uint16_t scaleFactor = 10;
 volatile uint8_t status=0;
 
+uint16_t kelvinTemp = 0;
+uint8_t relHumidity = 0;
+uint8_t thVoltage = 0;
+uint8_t thAlternator = 0;
+
+#define TH_ALTERNATOR_MAX 8
+
 #define STATUS_READ_INPUTS 0x01
 #define STATUS_FAST_ACTIVE 0x02
 #define STATUS_FAST_AMPM   0x04
 #define STATUS_REAL_AMPM   0x08
 #define STATUS_FAST_HOLDING 0x10 // This hold flag indicates we're actually in hold
 #define STATUS_FAST_HOLD   0x20  // This flag indicates that we start going into fast in hold
+#define STATUS_TEMP_DEG_F  0x40
 
 #define TIME_FLAGS_DISP_FAST       0x01
 #define TIME_FLAGS_DISP_FAST_HOLD  0x02
@@ -94,6 +107,8 @@ volatile uint8_t status=0;
 #define CONF_FLAG_FAST_AMPM          0x04
 #define CONF_FLAG_REAL_AMPM          0x08
 #define CONF_FLAG_FAST_HOLD_START    0x20
+#define CONF_FLAG_TEMP_DEG_F         0x40
+
 
 #define EE_ADDR_FAST_START1_H   0x30
 #define EE_ADDR_FAST_START1_M   0x31
@@ -108,6 +123,8 @@ volatile uint8_t status=0;
 #define EE_ADDR_FAST_RATIO_H   0x3A
 #define EE_ADDR_FAST_RATIO_L   0x3B
 
+#define EE_ADDR_TH_SRC_ADDR    0x3C
+
 uint32_t loopCount = 0;
 
 void blankCursorLine()
@@ -118,7 +135,7 @@ void blankCursorLine()
 
 void storeConfiguration(uint8_t confStatus)
 {
-	eeprom_write_byte((uint8_t*)(uint16_t)EE_ADDR_CONF_FLAGS, (confStatus & (STATUS_FAST_AMPM | STATUS_REAL_AMPM | STATUS_FAST_HOLD)));
+	eeprom_write_byte((uint8_t*)(uint16_t)EE_ADDR_CONF_FLAGS, (confStatus & (STATUS_FAST_AMPM | STATUS_REAL_AMPM | STATUS_FAST_HOLD | STATUS_TEMP_DEG_F)));
 }
 
 typedef struct
@@ -267,6 +284,15 @@ typedef enum
 	SCREEN_CONF_ADDR_IDLE  = 162,
 	SCREEN_CONF_ADDR_CONFIRM = 163,	
 	
+	SCREEN_CONF_THADDR_SETUP = 170,
+	SCREEN_CONF_THADDR_DRAW  = 171,
+	SCREEN_CONF_THADDR_IDLE  = 172,
+	SCREEN_CONF_THADDR_CONFIRM = 173,		
+	
+	SCREEN_CONF_TEMPU_SETUP = 176,
+	SCREEN_CONF_TEMPU_DRAW = 177,
+	SCREEN_CONF_TEMPU_IDLE = 178,	
+		
 	SCREEN_CONF_DIAG_SETUP = 250,
 	SCREEN_CONF_DIAG_DRAW  = 251,
 	SCREEN_CONF_DIAG_IDLE  = 252,
@@ -299,6 +325,8 @@ const ConfigurationOption configurationOptions[] =
   { "Fast Start Time 3", SCREEN_CONF_FSTART3_SETUP },    
   { "Time Pkt Interval", SCREEN_CONF_PKTINT_SETUP },
   { "Node Address",   SCREEN_CONF_ADDR_SETUP },
+  { "TH Address",     SCREEN_CONF_THADDR_SETUP },
+  { "Temperature Units", SCREEN_CONF_TEMPU_SETUP },
   { "Diagnostics",    SCREEN_CONF_DIAG_SETUP },  
 };
 
@@ -444,9 +472,19 @@ void PktHandler(void)
 		mrbus_state |= MRBUS_TX_PKT_READY;
 		goto PktIgnore;
 	}
+	else if ('S' == mrbus_rx_buffer[MRBUS_PKT_TYPE] && thSourceAddr == mrbus_rx_buffer[MRBUS_PKT_SRC] && mrbus_rx_buffer[MRBUS_PKT_LEN] >= 11)
+	{
+		// This might be a TH packet coming in
+		kelvinTemp = (((uint16_t)mrbus_rx_buffer[7])<<8) + (uint16_t)mrbus_tx_buffer[8];
+		relHumidity = mrbus_rx_buffer[9];
+		thTimeout = TH_TIMEOUT_RESET;
+		thVoltage = mrbus_rx_buffer[10];
+	}
 
 	// FIXME:  Insert code here to handle incoming packets specific
 	// to the device.
+	
+	
 
 	//*************** END PACKET HANDLER  ***************
 
@@ -541,6 +579,12 @@ void init(void)
 		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, scaleFactor & 0xFF);
 		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (scaleFactor>>8));
 	}	
+
+	thSourceAddr = eeprom_read_byte((uint8_t*)EE_ADDR_TH_SRC_ADDR);
+	if(0xFF == thSourceAddr)
+		thSourceAddr = 0;
+	eeprom_write_byte((uint8_t*)EE_ADDR_TH_SRC_ADDR, thSourceAddr);
+
 	
 	// Initialize MRBus address from EEPROM address 1
 	mrbus_dev_addr = eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR);
@@ -634,6 +678,30 @@ void drawLittleDate(TimeData* t)
 	printDec2DigWZero(t->year % 100);
 }
 
+void drawLittleTempHum()
+{
+	uint8_t tempInUnits = 0;
+	
+	if (status & STATUS_TEMP_DEG_F)
+		tempInUnits = 0xFF & (32 + ((kelvinTemp - 819) * 9) / (5 * 16));
+	else
+		tempInUnits = 0xFF & ((kelvinTemp - 819)>>4);
+	
+	lcd_gotoxy(9,2);
+	//        01111111111
+	//        90123456789
+//	lcd_puts("           ");
+	//           90123456789
+	// Format is DDD*F XXX%H
+	
+	printDec3Dig(tempInUnits);
+	lcd_putc(0xDF); // Degree symbol
+	lcd_putc((status & STATUS_TEMP_DEG_F)?'F':'C');
+	lcd_putc(' ');
+	printDec3Dig(relHumidity / 2);
+	lcd_puts("%H");
+}
+
 void drawLittleFast(TimeData* t)
 {
 	lcd_gotoxy(0,2);
@@ -670,7 +738,8 @@ void drawLittleFast(TimeData* t)
 
 void drawLittleTime(TimeData* t, uint8_t useAMPM)
 {
-	lcd_gotoxy(10,2);
+	lcd_gotoxy(9,2);
+	lcd_putc(' ');
 	
 	if (useAMPM)
 	{
@@ -796,7 +865,13 @@ int main(void)
 					else
 						lcd_puts("24");
 					drawBigTime(&realTime, status & STATUS_REAL_AMPM);
-					drawLittleDate(&realTime);
+
+					// If we have a TH node and packet within timeout, alternate between real and TH
+					if (0 != thSourceAddr && 0 != thTimeout && thAlternator >= (TH_ALTERNATOR_MAX/2))
+						drawLittleTempHum();
+					else
+						drawLittleDate(&realTime);
+
 					drawLittleFast(&fastTime);
 //					drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
 				}
@@ -1682,6 +1757,21 @@ int main(void)
 				lcd_putc((busVoltage % 10) + '0');					
 				lcd_putc('V');
 				
+
+				lcd_gotoxy(0,2);			
+				if (0 != thTimeout && 0 != thSourceAddr)
+				{
+
+					lcd_puts("TH :");
+					printDec2Dig(thVoltage / 10);
+					lcd_putc('.');
+					lcd_putc((thVoltage % 10) + '0');					
+					lcd_putc('V');
+				}
+				else
+					lcd_puts("         ");
+			
+				
 				lcd_gotoxy(11,1);
 				lcd_puts("Addr:0x");
 				printHex(mrbus_dev_addr);
@@ -1925,6 +2015,148 @@ int main(void)
 				}
 				buttonsPressed = 0;	
 				break;
+
+			case SCREEN_CONF_TEMPU_SETUP:
+				confSaveVar = (status & STATUS_REAL_AMPM);
+				lcd_gotoxy(0,0);
+				lcd_puts("Temperature Units");
+				drawSoftKeys(" F  ",  " C  ", "SAVE", "CNCL");
+				// Intentional fall-through
+
+			case SCREEN_CONF_TEMPU_DRAW:
+				lcd_gotoxy(0,1);
+				lcd_puts("[ ] Degrees F");
+				lcd_gotoxy(0,2);
+				lcd_puts("[ ] Degrees C");
+				lcd_gotoxy(1, (confSaveVar)?1:2);
+				lcd_putc('*');
+				screenState = SCREEN_CONF_TEMPU_IDLE;
+				break;
+
+			case SCREEN_CONF_TEMPU_IDLE:
+
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					confSaveVar = STATUS_TEMP_DEG_F;
+					screenState = SCREEN_CONF_TEMPU_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					confSaveVar = 0;
+					screenState = SCREEN_CONF_TEMPU_DRAW;
+				}
+				else if ((SOFTKEY_3 | SOFTKEY_4) & buttonsPressed)
+				{
+					if (SOFTKEY_3 & buttonsPressed)
+					{
+						status &= ~STATUS_TEMP_DEG_F;
+						status |= ((confSaveVar)?STATUS_TEMP_DEG_F:0);
+						storeConfiguration(status);
+					}
+					lcd_clrscr();
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}				
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+
+			case SCREEN_CONF_THADDR_SETUP:
+				tempVar = thSourceAddr;
+				if (0xFF == tempVar)
+					tempVar = 0x01;
+
+				confSaveVar = 0;
+				lcd_gotoxy(0,0);
+				lcd_puts("Temp/Humidity Addr:");
+				// Intentional fall-through
+
+			case SCREEN_CONF_THADDR_DRAW:
+
+				if (0x00 == tempVar)
+				{
+					lcd_gotoxy(0, 1);
+					lcd_puts("T/H Off");
+				}
+				else
+				{
+					lcd_gotoxy(0, 1);
+					lcd_puts("0x");
+					printHex(tempVar);
+					lcd_puts("   ");
+				}
+				lcd_gotoxy(0,2);
+				lcd_puts("            ");
+
+				lcd_gotoxy(2 + confSaveVar, 2);
+				lcd_puts("^");
+				drawSoftKeys(" ++ ",  " -- ", " >> ", " GO ");
+				screenState = SCREEN_CONF_THADDR_IDLE;
+				break;
+
+
+			case SCREEN_CONF_THADDR_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					if (0 == confSaveVar)
+						tempVar += 0x10;
+					else
+						tempVar += 0x01;
+
+					if (tempVar == 0xFF)
+						tempVar = 0xFE;
+
+					screenState = SCREEN_CONF_THADDR_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					if (0 == confSaveVar)
+						tempVar -= 0x10;
+					else
+						tempVar -= 0x01;
+
+					if (tempVar == 0xFF)
+						tempVar = 0xFE;
+
+					screenState = SCREEN_CONF_THADDR_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					confSaveVar = (confSaveVar+1)%2;
+					screenState = SCREEN_CONF_THADDR_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					blankCursorLine();
+					drawSoftKeys("BACK",  "", "SAVE", "CNCL");
+					screenState = SCREEN_CONF_THADDR_CONFIRM;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+
+			case SCREEN_CONF_THADDR_CONFIRM:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_THADDR_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					eeprom_write_byte((uint8_t*)EE_ADDR_TH_SRC_ADDR, tempVar);
+					thSourceAddr = eeprom_read_byte((uint8_t*)EE_ADDR_TH_SRC_ADDR);
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				buttonsPressed = 0;	
+				break;
+
+
 				
 			
 			default:
@@ -1947,7 +2179,6 @@ int main(void)
 		}
 		
 
-		// FIXME: Do any module-specific behaviours here in the loop.
 		if (screenUpdateDecisecs >= 10)
 		{
 			// Reading optimizer
@@ -1983,6 +2214,12 @@ int main(void)
 			
 			screenUpdateDecisecs -= 10;
 			kloopsPerSec = loopCount / 1000;
+			if(0 != thTimeout)
+				thTimeout--;
+				
+			if (++thAlternator >= TH_ALTERNATOR_MAX)
+				thAlternator = 0;
+				
 			loopCount = 0;
 		}		
 
