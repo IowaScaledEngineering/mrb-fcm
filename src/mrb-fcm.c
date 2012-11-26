@@ -56,10 +56,9 @@ extern uint8_t mrbus_priority;
 
 uint8_t mrbus_dev_addr = 0;
 
-#define TH_TIMEOUT_RESET 255
-
 uint8_t thSourceAddr = 0;
-uint8_t thTimeout = 0;
+uint16_t thTimeoutReset = 600;
+uint16_t thTimeout = 0;
 
 // ******** Start 100 Hz Timer - Very Accurate Version
 
@@ -122,8 +121,9 @@ uint8_t thAlternator = 0;
 
 #define EE_ADDR_FAST_RATIO_H   0x3A
 #define EE_ADDR_FAST_RATIO_L   0x3B
-
 #define EE_ADDR_TH_SRC_ADDR    0x3C
+#define EE_ADDR_TH_TIMEOUT_L   0x3D
+#define EE_ADDR_TH_TIMEOUT_H   0x3E
 
 uint32_t loopCount = 0;
 
@@ -292,6 +292,11 @@ typedef enum
 	SCREEN_CONF_TEMPU_SETUP = 176,
 	SCREEN_CONF_TEMPU_DRAW = 177,
 	SCREEN_CONF_TEMPU_IDLE = 178,	
+
+	SCREEN_CONF_THTIMEOUT_SETUP = 180,
+	SCREEN_CONF_THTIMEOUT_DRAW  = 181,
+	SCREEN_CONF_THTIMEOUT_IDLE  = 182,
+	SCREEN_CONF_THTIMEOUT_CONFIRM = 183,	
 		
 	SCREEN_CONF_DIAG_SETUP = 250,
 	SCREEN_CONF_DIAG_DRAW  = 251,
@@ -326,6 +331,7 @@ const ConfigurationOption configurationOptions[] =
   { "Time Pkt Interval", SCREEN_CONF_PKTINT_SETUP },
   { "Node Address",   SCREEN_CONF_ADDR_SETUP },
   { "TH Address",     SCREEN_CONF_THADDR_SETUP },
+  { "TH Timeout", SCREEN_CONF_THTIMEOUT_SETUP },
   { "Temperature Units", SCREEN_CONF_TEMPU_SETUP },
   { "Diagnostics",    SCREEN_CONF_DIAG_SETUP },  
 };
@@ -478,7 +484,7 @@ void PktHandler(void)
 		// P:FF 20 0B 60 7B 53 00 12 5B 3C 20
 		kelvinTemp = (((uint16_t)mrbus_rx_buffer[7])<<8) + (uint16_t)mrbus_rx_buffer[8];
 		relHumidity = mrbus_rx_buffer[9];
-		thTimeout = TH_TIMEOUT_RESET;
+		thTimeout = thTimeoutReset;
 		thVoltage = mrbus_rx_buffer[10];
 	}
 
@@ -586,7 +592,19 @@ void init(void)
 		thSourceAddr = 0;
 	eeprom_write_byte((uint8_t*)EE_ADDR_TH_SRC_ADDR, thSourceAddr);
 
-	
+	thTimeoutReset = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L) 
+			| (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H)) << 8);
+
+
+	if (thTimeoutReset < 10 || thTimeoutReset > 9999)
+	{
+		thTimeoutReset = 10;
+		eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L, thTimeoutReset & 0xFF);
+		eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H, 0xFF & (thTimeoutReset>>8));
+		thTimeoutReset = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L) 
+			| (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H)) << 8);			
+	}
+			
 	// Initialize MRBus address from EEPROM address 1
 	mrbus_dev_addr = eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR);
 	
@@ -2162,7 +2180,134 @@ int main(void)
 				buttonsPressed = 0;	
 				break;
 
+			case SCREEN_CONF_THTIMEOUT_SETUP:
+				confSaveVar = 0;
+				tempVar16 = thTimeoutReset;
+				lcd_clrscr();
+				lcd_gotoxy(0,0);
+				lcd_puts("Temp/Hum Timeout:");
+				screenState = SCREEN_CONF_THTIMEOUT_DRAW;
+				break;
 
+			case SCREEN_CONF_THTIMEOUT_DRAW:
+				lcd_gotoxy(0,1);
+				printDec4DigWZero(tempVar16);
+				lcd_puts(" sec");
+
+				lcd_gotoxy(0,2);
+				lcd_puts("            ");
+				lcd_gotoxy(confSaveVar, 2);
+				lcd_putc('^');
+				drawSoftKeys(" ++ ", " -- ", " >> ", " GO ");
+
+				screenState = SCREEN_CONF_THTIMEOUT_IDLE;
+				break;
+				
+			case SCREEN_CONF_THTIMEOUT_IDLE:
+				// Switchy goodness
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+
+						case 0:
+							if ((tempVar16 / 1000) % 10 != 9)
+								tempVar16 += 1000;
+							else
+								tempVar16 -= 9000;
+							break;
+						case 1:
+							if ((tempVar16 / 100) % 10 != 9)
+								tempVar16 += 100;
+							else
+								tempVar16 -= 900;
+							break;
+						case 2:
+							if ((tempVar16 / 10) % 10 != 9)
+								tempVar16 += 10;
+							else
+								tempVar16 -= 90;
+							break;
+						case 3:
+							if (tempVar16 % 10 != 9)
+								tempVar16 += 1;
+							else
+								tempVar16 -= 9;
+							break;
+					}
+					screenState = SCREEN_CONF_THTIMEOUT_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					switch(confSaveVar)
+					{
+						case 0:
+							if ((tempVar16 / 1000) % 10 != 0)
+								tempVar16 -= 1000;
+							else
+								tempVar16 += 9000;
+							break;
+						case 1:
+							if ((tempVar16 / 100) % 10 != 0)
+								tempVar16 -= 100;
+							else
+								tempVar16 += 900;
+							break;
+						case 2:
+							if ((tempVar16 / 10) % 10 != 0)
+								tempVar16 -= 10;
+							else
+								tempVar16 += 90;
+							break;
+						case 3:
+							if (tempVar16 % 10 != 0)
+								tempVar16 -= 1;
+							else
+								tempVar16 += 9;
+							break;
+					}
+					screenState = SCREEN_CONF_THTIMEOUT_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					confSaveVar = (confSaveVar+1)%4;
+					screenState = SCREEN_CONF_THTIMEOUT_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					blankCursorLine();
+					drawSoftKeys("BACK",  "", "SAVE", "CNCL");
+					screenState = SCREEN_CONF_THTIMEOUT_CONFIRM;
+				}
+				
+				// Buttons handled, clear
+				buttonsPressed = 0;			
+				break;
+
+			case SCREEN_CONF_THTIMEOUT_CONFIRM:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_THTIMEOUT_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					if (tempVar16 < 10 || tempVar16 > 9999)
+						tempVar16 = 10;
+
+					eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L, tempVar16 & 0xFF);
+					eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H, 0xFF & (tempVar16>>8));
+
+					thTimeoutReset = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L) 
+						| (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H)) << 8);
+
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				buttonsPressed = 0;	
+				break;
 				
 			
 			default:

@@ -655,6 +655,14 @@ void printDec4Dig(uint16_t val)
 	lcd_putc('0' + (val%10));
 }
 
+void printDec4DigWZero(uint16_t val)
+{
+	lcd_putc('0' + ((val/1000)%10));
+	lcd_putc('0' + ((val/100)%10));
+	lcd_putc('0' + ((val/10)%10));
+	lcd_putc('0' + (val%10));
+}
+
 void printDec2Dig(uint8_t val)
 {
 	if (val >= 10)
