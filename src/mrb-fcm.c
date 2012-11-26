@@ -475,7 +475,8 @@ void PktHandler(void)
 	else if ('S' == mrbus_rx_buffer[MRBUS_PKT_TYPE] && thSourceAddr == mrbus_rx_buffer[MRBUS_PKT_SRC] && mrbus_rx_buffer[MRBUS_PKT_LEN] >= 11)
 	{
 		// This might be a TH packet coming in
-		kelvinTemp = (((uint16_t)mrbus_rx_buffer[7])<<8) + (uint16_t)mrbus_tx_buffer[8];
+		// P:FF 20 0B 60 7B 53 00 12 5B 3C 20
+		kelvinTemp = (((uint16_t)mrbus_rx_buffer[7])<<8) + (uint16_t)mrbus_rx_buffer[8];
 		relHumidity = mrbus_rx_buffer[9];
 		thTimeout = TH_TIMEOUT_RESET;
 		thVoltage = mrbus_rx_buffer[10];
@@ -672,9 +673,9 @@ void drawLittleDate(TimeData* t)
 {
 	lcd_gotoxy(9,2);
 	printDec2Dig(t->day);
-	lcd_putc(' ');
+	lcd_putc('-');
 	lcd_puts(monthNames[t->month]);
-	lcd_puts(" 20");
+	lcd_puts("-20");
 	printDec2DigWZero(t->year % 100);
 }
 
@@ -683,10 +684,9 @@ void drawLittleTempHum()
 	uint8_t tempInUnits = 0;
 	
 	if (status & STATUS_TEMP_DEG_F)
-		tempInUnits = 0xFF & (32 + ((kelvinTemp - 819) * 9) / (5 * 16));
+		tempInUnits = (uint8_t)( 32 + (((kelvinTemp - 4370) * 9) / (5 * 16)) );
 	else
-		tempInUnits = 0xFF & ((kelvinTemp - 819)>>4);
-	
+		tempInUnits = 0xFF & ((kelvinTemp - 4370)>>4);
 	lcd_gotoxy(9,2);
 	//        01111111111
 	//        90123456789
@@ -847,7 +847,13 @@ int main(void)
 					else
 						drawBigTime(&fastTime, status & STATUS_FAST_AMPM);
 						
-					drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
+						
+					// If we have a TH node and packet within timeout, alternate between real and TH
+					if (0 != thSourceAddr && 0 != thTimeout && thAlternator >= (TH_ALTERNATOR_MAX/2))
+						drawLittleTempHum();
+					else
+						drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
+				
 					
 					// blank out the the small fast time
 					lcd_gotoxy(0,2);
