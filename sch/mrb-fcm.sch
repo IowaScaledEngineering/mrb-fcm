@@ -297,7 +297,7 @@ refdes=U3
 T 63400 52800 5 10 1 1 0 0 1
 device=ATMega328-TQFP32
 T 63400 53000 5 10 0 0 0 0 1
-footprint=TQFP32_7
+footprint=TQFP32
 T 63400 53600 5 10 0 0 0 0 1
 description=ATMega328
 T 63400 52800 5 10 0 2 0 0 1
