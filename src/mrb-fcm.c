@@ -44,11 +44,6 @@ LICENSE:
 
 #include "mrbus.h"
 
-extern uint8_t mrbus_activity;
-extern uint8_t mrbus_rx_buffer[MRBUS_BUFFER_SIZE];
-extern uint8_t mrbus_tx_buffer[MRBUS_BUFFER_SIZE];
-extern uint8_t mrbus_state;
-
 // MRBee doesn't have a concept of arbitration, so there's no priority level
 #ifndef MRBEE
 extern uint8_t mrbus_priority;
