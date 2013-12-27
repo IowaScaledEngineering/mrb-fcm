@@ -86,7 +86,7 @@ AVRDUDE = avrdude -c usbtiny -p $(DEVICE) -F
 
 OBJS = ${SRCS:.c=.o}
 INCLUDES = -I. -I../../mrbus/src -I../../mrbee/src -I../../libs/avr-ds1302
-CFLAGS  = $(INCLUDES) -Wall -Os
+CFLAGS  = $(INCLUDES) -Wall -Os -std=gnu99
 
 COMPILE = avr-gcc $(DEFINES) -DF_CPU=$(F_CPU) $(CFLAGS) -mmcu=$(DEVICE)
 
@@ -99,6 +99,7 @@ help:
 	@echo "make fuse ...... flash the fuses"
 	@echo "make program ... flash fuses and firmware"
 	@echo "make read ...... read the fuses"
+	@echo "make size ...... memory usage"
 	@echo "make clean ..... delete objects and hex file"
 	@echo "make release.... produce release tarball"
 
@@ -114,6 +115,9 @@ fuse:
 
 read:
 	$(AVRDUDE) -v
+
+size:
+	avr-size -C --mcu=$(DEVICE) $(BASE_NAME).elf
 
 # rule for uploading firmware:
 flash: $(BASE_NAME).hex
