@@ -1,0 +1,538 @@
+  0
+SECTION
+  2
+HEADER
+  9
+$ACADVER
+  1
+AC1009
+  9
+$EXTMAX
+ 10
+114.299995422363
+ 20
+101.599998474121
+ 30
+0.0
+  9
+$EXTMIN
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+  9
+$INSUNITS
+ 70
+     1
+  9
+$LUNITS
+ 70
+     2
+  9
+$LUPREC
+ 70
+     4
+  9
+$MEASUREMENT
+ 70
+     0
+  0
+ENDSEC
+  0
+SECTION
+  2
+TABLES
+  0
+TABLE
+  2
+LAYER
+ 70
+     1
+  0
+LAYER
+  2
+0
+ 70
+     0
+ 62
+     7
+  6
+Continuous
+  0
+LAYER
+  2
+Default
+ 70
+     0
+ 62
+    70
+  6
+Continuous
+  0
+LAYER
+  2
+Display_PCB
+ 70
+     0
+ 62
+    70
+  6
+Continuous
+  0
+LAYER
+  2
+Buttons
+ 70
+     0
+ 62
+    70
+  6
+Continuous
+  0
+LAYER
+  2
+Display_Screws
+ 70
+     0
+ 62
+    70
+  6
+Continuous
+  0
+LAYER
+  2
+Panel_Screws
+ 70
+     0
+ 62
+    70
+  6
+Continuous
+  0
+ENDTAB
+  0
+TABLE
+  2
+APPID
+ 70
+     1
+  0
+APPID
+  2
+ACAD
+ 70
+     0
+  0
+ENDTAB
+  0
+ENDSEC
+  0
+SECTION
+  2
+ENTITIES
+  0
+POLYLINE
+  8
+Default
+ 66
+     1
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+ 70
+     1
+  0
+VERTEX
+  8
+Default
+ 10
+0.0
+ 20
+0.0
+ 42
+0.0
+  0
+VERTEX
+  8
+Default
+ 10
+4.5
+ 20
+0.0
+ 42
+0.0
+  0
+VERTEX
+  8
+Default
+ 10
+4.5
+ 20
+4.0
+ 42
+0.0
+  0
+VERTEX
+  8
+Default
+ 10
+0.0
+ 20
+4.0
+ 42
+0.0
+  0
+SEQEND
+  0
+ARC
+  8
+Default
+ 10
+0.125
+ 20
+3.875
+ 30
+0.0
+ 40
+0.125
+ 50
+90.0
+ 51
+180.0
+  0
+CIRCLE
+  8
+Default
+ 10
+1.0
+ 20
+2.0
+ 30
+0.0
+ 40
+0.125
+  0
+CIRCLE
+  8
+Default
+ 10
+3.5
+ 20
+2.0
+ 30
+0.0
+ 40
+0.125
+  0
+ARC
+  8
+Default
+ 10
+0.125
+ 20
+0.125
+ 30
+0.0
+ 40
+0.125
+ 50
+180.0
+ 51
+270.0
+  0
+ARC
+  8
+Default
+ 10
+4.375
+ 20
+0.125
+ 30
+0.0
+ 40
+0.125
+ 50
+270.0
+ 51
+360.0
+  0
+ARC
+  8
+Default
+ 10
+4.375
+ 20
+3.875
+ 30
+0.0
+ 40
+0.125
+ 50
+0.0
+ 51
+90.0
+  0
+POLYLINE
+  8
+Display_PCB
+ 66
+     1
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+ 70
+     1
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+0.32085
+ 20
+1.22
+ 42
+0.0
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+4.17915
+ 20
+1.22
+ 42
+0.0
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+4.17915
+ 20
+2.795
+ 42
+0.0
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+0.32085
+ 20
+2.795
+ 42
+0.0
+  0
+SEQEND
+  0
+POLYLINE
+  8
+Display_PCB
+ 66
+     1
+ 10
+0.0
+ 20
+0.0
+ 30
+0.0
+ 70
+     1
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+0.32085
+ 20
+0.8125
+ 42
+0.0
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+4.17915
+ 20
+0.8125
+ 42
+0.0
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+4.17915
+ 20
+3.1747
+ 42
+0.0
+  0
+VERTEX
+  8
+Display_PCB
+ 10
+0.32085
+ 20
+3.1747
+ 42
+0.0
+  0
+SEQEND
+  0
+CIRCLE
+  8
+Buttons
+ 10
+1.237
+ 20
+0.54
+ 30
+0.0
+ 40
+0.145
+  0
+CIRCLE
+  8
+Buttons
+ 10
+1.907
+ 20
+0.54
+ 30
+0.0
+ 40
+0.145
+  0
+CIRCLE
+  8
+Buttons
+ 10
+2.574
+ 20
+0.54
+ 30
+0.0
+ 40
+0.145
+  0
+CIRCLE
+  8
+Buttons
+ 10
+3.241
+ 20
+0.54
+ 30
+0.0
+ 40
+0.145
+  0
+CIRCLE
+  8
+Display_Screws
+ 10
+0.4194
+ 20
+0.915
+ 30
+0.0
+ 40
+0.07
+  0
+CIRCLE
+  8
+Display_Screws
+ 10
+4.0807
+ 20
+0.915
+ 30
+0.0
+ 40
+0.07
+  0
+CIRCLE
+  8
+Display_Screws
+ 10
+0.4194
+ 20
+3.0804
+ 30
+0.0
+ 40
+0.07
+  0
+CIRCLE
+  8
+Display_Screws
+ 10
+4.0807
+ 20
+3.0804
+ 30
+0.0
+ 40
+0.07
+  0
+CIRCLE
+  8
+Panel_Screws
+ 10
+0.375
+ 20
+0.375
+ 30
+0.0
+ 40
+0.07
+  0
+CIRCLE
+  8
+Panel_Screws
+ 10
+4.125
+ 20
+0.375
+ 30
+0.0
+ 40
+0.07
+  0
+CIRCLE
+  8
+Panel_Screws
+ 10
+0.375
+ 20
+3.625
+ 30
+0.0
+ 40
+0.07
+  0
+CIRCLE
+  8
+Panel_Screws
+ 10
+4.175
+ 20
+3.625
+ 30
+0.0
+ 40
+0.07
+  0
+ENDSEC
+  0
+EOF
