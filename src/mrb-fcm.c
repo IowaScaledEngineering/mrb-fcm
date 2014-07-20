@@ -44,11 +44,6 @@ LICENSE:
 
 #include "mrbus.h"
 
-// MRBee doesn't have a concept of arbitration, so there's no priority level
-#ifndef MRBEE
-extern uint8_t mrbus_priority;
-#endif
-
 uint8_t mrbus_dev_addr = 0;
 
 uint8_t thSourceAddr = 0;
