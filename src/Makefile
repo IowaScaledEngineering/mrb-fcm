@@ -72,17 +72,17 @@ FUSE_E  = 0x04
 
 
 # MRBus
-#DEFINES = -DMRBUS
-#SRCS = $(BASE_NAME).c ../../mrbus/src/mrbus-avr.c ../../mrbus/src/mrbus-crc.c ../../libs/avr-ds1302/ds1302.c ./lcd.c
-#INCS = ../../mrbus/src/mrbus.h ../../mrbus/src/mrbus-avr.h ../../libs/avr-ds1302.h ./lcd.h
+DEFINES = -DMRBUS
+SRCS = $(BASE_NAME).c ../../mrbus/src/mrbus-avr.c ../../mrbus/src/mrbus-crc.c ../../libs/avr-ds1302/ds1302.c ./lcd.c
+INCS = ../../mrbus/src/mrbus.h ../../mrbus/src/mrbus-avr.h ../../libs/avr-ds1302.h ./lcd.h
 
 
 # MRBee
-DEFINES = -DMRBEE -DMRBEE_BAUD=115200 -DSWREV=0 -DHWREV_MAJOR=1 -DHWREV_MINOR=0 -DXBEE_IGNORE_FLOW=1
-SRCS = $(BASE_NAME).c ../../mrbus/src/mrbus-crc.c ../../mrbee/src/mrbee.c ../../mrbee/src/xbee.c ../../libs/avr-ds1302/ds1302.c ./lcd.c
-INCS = ../../mrbus/src/mrbus.h ../../mrbee/src/mrbee.h ../../mrbee/src/xbee.h ../../libs/avr-ds1302.h ./lcd.h
+#DEFINES = -DMRBEE -DMRBEE_BAUD=115200 -DSWREV=0 -DHWREV_MAJOR=1 -DHWREV_MINOR=0 -DXBEE_IGNORE_FLOW=1
+#SRCS = $(BASE_NAME).c ../../mrbus/src/mrbus-crc.c ../../mrbee/src/mrbee.c ../../mrbee/src/xbee.c ../../libs/avr-ds1302/ds1302.c ./lcd.c
+#INCS = ../../mrbus/src/mrbus.h ../../mrbee/src/mrbee.h ../../mrbee/src/xbee.h ../../libs/avr-ds1302.h ./lcd.h
 
-AVRDUDE = avrdude -c usbtiny -p $(DEVICE) -F 
+AVRDUDE = avrdude -c usbtiny -p $(DEVICE) -F -B1
 
 OBJS = ${SRCS:.c=.o}
 INCLUDES = -I. -I../../mrbus/src -I../../mrbee/src -I../../libs/avr-ds1302
