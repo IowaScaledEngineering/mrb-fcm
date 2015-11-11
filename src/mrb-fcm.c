@@ -5,7 +5,7 @@ File:     $Id: $
 License:  GNU General Public License v3
 
 LICENSE:
-    Copyright (C) 2012 Nathan D. Holmes
+    Copyright (C) 2012-2015 Nathan D. Holmes
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -32,17 +32,17 @@ LICENSE:
 #ifdef MRBEE
 // If wireless, redefine the common variables and functions
 #include "mrbee.h"
-#define mrbus_rx_buffer mrbee_rx_buffer
-#define mrbus_tx_buffer mrbee_tx_buffer
-#define mrbus_state mrbee_state
-#define mrbux_rx_buffer mrbee_rx_buffer
-#define mrbus_tx_buffer mrbee_tx_buffer
-#define mrbus_state mrbee_state
-#define mrbusInit mrbeeInit
-#define mrbusPacketTransmit mrbeePacketTransmit
+#define mrbusTxQueue mrbeeTxQueue
+#define mrbusRxQueue mrbeeRxQueue
+#else
+#include "mrbus.h"
 #endif
 
-#include "mrbus.h"
+#define MRBUS_TX_BUFFER_DEPTH 4
+#define MRBUS_RX_BUFFER_DEPTH 4
+
+MRBusPacket mrbusTxPktBufferArray[MRBUS_TX_BUFFER_DEPTH];
+MRBusPacket mrbusRxPktBufferArray[MRBUS_RX_BUFFER_DEPTH];
 
 uint8_t mrbus_dev_addr = 0;
 
@@ -395,23 +395,28 @@ void PktHandler(void)
 {
 	uint16_t crc = 0;
 	uint8_t i;
+	uint8_t rxBuffer[MRBUS_BUFFER_SIZE];
+	uint8_t txBuffer[MRBUS_BUFFER_SIZE];
+
+	if (0 == mrbusPktQueuePop(&mrbusRxQueue, rxBuffer, sizeof(rxBuffer)))
+		return;
 
 	//*************** PACKET FILTER ***************
 	// Loopback Test - did we send it?  If so, we probably want to ignore it
-	if (mrbus_rx_buffer[MRBUS_PKT_SRC] == mrbus_dev_addr) 
+	if (rxBuffer[MRBUS_PKT_SRC] == mrbus_dev_addr) 
 		goto	PktIgnore;
 
 	// Destination Test - is this for us or broadcast?  If not, ignore
-	if (0xFF != mrbus_rx_buffer[MRBUS_PKT_DEST] && mrbus_dev_addr != mrbus_rx_buffer[MRBUS_PKT_DEST]) 
+	if (0xFF != rxBuffer[MRBUS_PKT_DEST] && mrbus_dev_addr != rxBuffer[MRBUS_PKT_DEST]) 
 		goto	PktIgnore;
 	
 	// CRC16 Test - is the packet intact?
-	for(i=0; i<mrbus_rx_buffer[MRBUS_PKT_LEN]; i++)
+	for(i=0; i<rxBuffer[MRBUS_PKT_LEN]; i++)
 	{
 		if ((i != MRBUS_PKT_CRC_H) && (i != MRBUS_PKT_CRC_L)) 
-			crc = mrbusCRC16Update(crc, mrbus_rx_buffer[i]);
+			crc = mrbusCRC16Update(crc, rxBuffer[i]);
 	}
-	if ((UINT16_HIGH_BYTE(crc) != mrbus_rx_buffer[MRBUS_PKT_CRC_H]) || (UINT16_LOW_BYTE(crc) != mrbus_rx_buffer[MRBUS_PKT_CRC_L]))
+	if ((UINT16_HIGH_BYTE(crc) != rxBuffer[MRBUS_PKT_CRC_H]) || (UINT16_LOW_BYTE(crc) != rxBuffer[MRBUS_PKT_CRC_L]))
 		goto	PktIgnore;
 		
 	//*************** END PACKET FILTER ***************
@@ -431,58 +436,57 @@ void PktHandler(void)
 	// should be sent out of the main loop so that they don't step on things in
 	// the transmit buffer
 	
-	if ('A' == mrbus_rx_buffer[MRBUS_PKT_TYPE])
+	if ('A' == rxBuffer[MRBUS_PKT_TYPE])
 	{
 		// PING packet
-		mrbus_tx_buffer[MRBUS_PKT_DEST] = mrbus_rx_buffer[MRBUS_PKT_SRC];
-		mrbus_tx_buffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
-		mrbus_tx_buffer[MRBUS_PKT_LEN] = 6;
-		mrbus_tx_buffer[MRBUS_PKT_TYPE] = 'a';
-		mrbus_state |= MRBUS_TX_PKT_READY;
+		txBuffer[MRBUS_PKT_DEST] = rxBuffer[MRBUS_PKT_SRC];
+		txBuffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
+		txBuffer[MRBUS_PKT_LEN] = 6;
+		txBuffer[MRBUS_PKT_TYPE] = 'a';
+		mrbusPktQueuePush(&mrbusTxQueue, txBuffer, txBuffer[MRBUS_PKT_LEN]);
 		goto PktIgnore;
 	} 
-	else if ('W' == mrbus_rx_buffer[MRBUS_PKT_TYPE]) 
+	else if ('W' == rxBuffer[MRBUS_PKT_TYPE]) 
 	{
 		// EEPROM WRITE Packet
-		mrbus_tx_buffer[MRBUS_PKT_DEST] = mrbus_rx_buffer[MRBUS_PKT_SRC];
-		mrbus_tx_buffer[MRBUS_PKT_LEN] = 8;			
-		mrbus_tx_buffer[MRBUS_PKT_TYPE] = 'w';
-		eeprom_write_byte((uint8_t*)(uint16_t)mrbus_rx_buffer[6], mrbus_rx_buffer[7]);
-		mrbus_tx_buffer[6] = mrbus_rx_buffer[6];
-		mrbus_tx_buffer[7] = mrbus_rx_buffer[7];
-		if (MRBUS_EE_DEVICE_ADDR == mrbus_rx_buffer[6])
-			mrbus_dev_addr = eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR);
-		mrbus_tx_buffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
-		mrbus_state |= MRBUS_TX_PKT_READY;
-		goto PktIgnore;
-	
+		txBuffer[MRBUS_PKT_DEST] = rxBuffer[MRBUS_PKT_SRC];
+		txBuffer[MRBUS_PKT_LEN] = 8;			
+		txBuffer[MRBUS_PKT_TYPE] = 'w';
+		eeprom_write_byte((uint8_t*)(uint16_t)rxBuffer[6], rxBuffer[7]);
+		txBuffer[6] = rxBuffer[6];
+		txBuffer[7] = rxBuffer[7];
+		
+		switch(rxBuffer[6])
+		{
+			case MRBUS_EE_DEVICE_ADDR:
+				mrbus_dev_addr = eeprom_read_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR);
+				break;
+		}
+				txBuffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
+		mrbusPktQueuePush(&mrbusTxQueue, txBuffer, txBuffer[MRBUS_PKT_LEN]);
+		goto PktIgnore;	
 	}
-	else if ('R' == mrbus_rx_buffer[MRBUS_PKT_TYPE]) 
+	else if ('R' == rxBuffer[MRBUS_PKT_TYPE]) 
 	{
 		// EEPROM READ Packet
-		mrbus_tx_buffer[MRBUS_PKT_DEST] = mrbus_rx_buffer[MRBUS_PKT_SRC];
-		mrbus_tx_buffer[MRBUS_PKT_LEN] = 8;			
-		mrbus_tx_buffer[MRBUS_PKT_TYPE] = 'r';
-		mrbus_tx_buffer[6] = mrbus_rx_buffer[6];
-		mrbus_tx_buffer[7] = eeprom_read_byte((uint8_t*)(uint16_t)mrbus_rx_buffer[6]);			
-		mrbus_state |= MRBUS_TX_PKT_READY;
+		txBuffer[MRBUS_PKT_DEST] = rxBuffer[MRBUS_PKT_SRC];
+		txBuffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
+		txBuffer[MRBUS_PKT_LEN] = 8;			
+		txBuffer[MRBUS_PKT_TYPE] = 'r';
+		txBuffer[6] = rxBuffer[6];
+		txBuffer[7] = eeprom_read_byte((uint8_t*)(uint16_t)rxBuffer[6]);			
+		mrbusPktQueuePush(&mrbusTxQueue, txBuffer, txBuffer[MRBUS_PKT_LEN]);
 		goto PktIgnore;
 	}
-	else if ('S' == mrbus_rx_buffer[MRBUS_PKT_TYPE] && thSourceAddr == mrbus_rx_buffer[MRBUS_PKT_SRC] && mrbus_rx_buffer[MRBUS_PKT_LEN] >= 11)
+	else if ('S' == rxBuffer[MRBUS_PKT_TYPE] && thSourceAddr == rxBuffer[MRBUS_PKT_SRC] && rxBuffer[MRBUS_PKT_LEN] >= 11)
 	{
 		// This might be a TH packet coming in
 		// P:FF 20 0B 60 7B 53 00 12 5B 3C 20
-		kelvinTemp = (((uint16_t)mrbus_rx_buffer[7])<<8) + (uint16_t)mrbus_rx_buffer[8];
-		relHumidity = mrbus_rx_buffer[9];
+		kelvinTemp = (((uint16_t)rxBuffer[7])<<8) + (uint16_t)rxBuffer[8];
+		relHumidity = rxBuffer[9];
 		thTimeout = thTimeoutReset;
-		thVoltage = mrbus_rx_buffer[10];
+		thVoltage = rxBuffer[10];
 	}
-
-	// FIXME:  Insert code here to handle incoming packets specific
-	// to the device.
-	
-	
-
 	//*************** END PACKET HANDLER  ***************
 
 	
@@ -490,11 +494,6 @@ void PktHandler(void)
 PktIgnore:
 	// Yes, I hate gotos as well, but sometimes they're a really handy and efficient
 	// way to jump to a common block of cleanup code at the end of a function 
-
-	// This section resets anything that needs to be reset in order to allow us to receive
-	// another packet.  Typically, that's just clearing the MRBUS_RX_PKT_READY flag to 
-	// indicate to the core library that the mrbus_rx_buffer is clear.
-	mrbus_state &= (~MRBUS_RX_PKT_READY);
 	return;	
 }
 
@@ -800,14 +799,18 @@ int main(void)
 	initialize100HzTimer();
 
 	// Initialize MRBus core
+#ifdef MRBEE
+	mrbusPktQueueInitialize(&mrbeeTxQueue, mrbusTxPktBufferArray, MRBUS_TX_BUFFER_DEPTH);
+	mrbusPktQueueInitialize(&mrbeeRxQueue, mrbusRxPktBufferArray, MRBUS_RX_BUFFER_DEPTH);
+	mrbeeInit();
+#else
+	mrbusPktQueueInitialize(&mrbusTxQueue, mrbusTxPktBufferArray, MRBUS_TX_BUFFER_DEPTH);
+	mrbusPktQueueInitialize(&mrbusRxQueue, mrbusRxPktBufferArray, MRBUS_RX_BUFFER_DEPTH);
 	mrbusInit();
-	
 	// MRBee doesn't have a concept of arbitration, so there's no priority level
-#ifndef MRBEE
-	mrbus_priority = 1;  // We're a clock, highest priority
+	// We're a clock, highest priority
+	mrbusSetPriority(1);
 #endif
-	
-
 
 	drawSplashScreen();
 
@@ -819,12 +822,12 @@ int main(void)
 	while (1)
 	{
 		loopCount++;
-#ifdef MRBEE
-		mrbeePoll();
-#endif
+
 		// Handle any packets that may have come in
-		if (mrbus_state & MRBUS_RX_PKT_READY)
+		if (mrbusPktQueueDepth(&mrbusRxQueue))
+		{
 			PktHandler();
+		}
 
 		if (status & STATUS_READ_INPUTS)
 		{
@@ -2372,9 +2375,10 @@ int main(void)
 		}			
 		
 		
-		if (vitalChange && !(mrbus_state & (MRBUS_TX_BUF_ACTIVE | MRBUS_TX_PKT_READY)))
+		if (vitalChange && !(mrbusPktQueueFull(&mrbusTxQueue)))
 		{
 			uint8_t flags = 0;
+			uint8_t txBuffer[MRBUS_BUFFER_SIZE];
 
 			if (FAST_MODE)
 				flags |= 0x01;
@@ -2391,65 +2395,57 @@ int main(void)
 #define STATUS_FAST_AMPM   0x04
 #define STATUS_REAL_AMPM   0x08
 			
-			mrbus_tx_buffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
-			mrbus_tx_buffer[MRBUS_PKT_DEST] = 0xFF;
-			mrbus_tx_buffer[MRBUS_PKT_LEN] = 18;			
-			mrbus_tx_buffer[5] = 'T';
-			mrbus_tx_buffer[6] = realTime.hours;
-			mrbus_tx_buffer[7] = realTime.minutes;
-			mrbus_tx_buffer[8] = realTime.seconds;
-			mrbus_tx_buffer[9] = flags;
-			mrbus_tx_buffer[10] = fastTime.hours;
-			mrbus_tx_buffer[11] = fastTime.minutes;			
-			mrbus_tx_buffer[12] = fastTime.seconds;
-			mrbus_tx_buffer[13] = 0xFF & (scaleFactor>>8);
-			mrbus_tx_buffer[14] = 0xFF & scaleFactor;
-			mrbus_tx_buffer[15] = 0xFF & (realTime.year>>4);
-			mrbus_tx_buffer[16] = ((realTime.year<<4) & 0xF0) | (0x0F & realTime.month);
-			mrbus_tx_buffer[17] = realTime.day;
-			mrbus_state |= MRBUS_TX_PKT_READY;
+			txBuffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
+			txBuffer[MRBUS_PKT_DEST] = 0xFF;
+			txBuffer[MRBUS_PKT_LEN] = 18;			
+			txBuffer[5] = 'T';
+			txBuffer[6] = realTime.hours;
+			txBuffer[7] = realTime.minutes;
+			txBuffer[8] = realTime.seconds;
+			txBuffer[9] = flags;
+			txBuffer[10] = fastTime.hours;
+			txBuffer[11] = fastTime.minutes;			
+			txBuffer[12] = fastTime.seconds;
+			txBuffer[13] = 0xFF & (scaleFactor>>8);
+			txBuffer[14] = 0xFF & scaleFactor;
+			txBuffer[15] = 0xFF & (realTime.year>>4);
+			txBuffer[16] = ((realTime.year<<4) & 0xF0) | (0x0F & realTime.month);
+			txBuffer[17] = realTime.day;
+			mrbusPktQueuePush(&mrbusTxQueue, txBuffer, txBuffer[MRBUS_PKT_LEN]);
 			vitalChange = 0;
 		}
 
 
 
 		// If we have a packet to be transmitted, try to send it here
-		while(mrbus_state & MRBUS_TX_PKT_READY)
+		while(mrbusPktQueueDepth(&mrbusTxQueue))
 		{
-			uint8_t bus_countdown;
+			wdt_reset();
 
-			// Even while we're sitting here trying to transmit, keep handling
-			// any packets we're receiving so that we keep up with the current state of the
-			// bus.  Obviously things that request a response cannot go, since the transmit
-			// buffer is full.
-			if (mrbus_state & MRBUS_RX_PKT_READY)
-				PktHandler();
-
-
-			if (0 == mrbusPacketTransmit())
+#ifdef MRBUS
+			if (0 != mrbusTransmit()) // 0 is success, all others are failure
 			{
-				mrbus_state &= ~(MRBUS_TX_PKT_READY);
-				break;
-			}
+				// If we're here, we failed to start transmission due to somebody else transmitting
+				// Given that our transmit buffer is full, priority one should be getting that data onto
+				// the bus so we can start using our tx buffer again.  So we stay in the while loop, trying
+				// to get bus time.
 
-#ifndef MRBEE
-			// If we're here, we failed to start transmission due to somebody else transmitting
-			// Given that our transmit buffer is full, priority one should be getting that data onto
-			// the bus so we can start using our tx buffer again.  So we stay in the while loop, trying
-			// to get bus time.
-
-			// We want to wait 20ms before we try a retransmit
-			// Because MRBus has a minimum packet size of 6 bytes @ 57.6kbps,
-			// need to check roughly every millisecond to see if we have a new packet
-			// so that we don't miss things we're receiving while waiting to transmit
-			bus_countdown = 20;
-			while (bus_countdown-- > 0 && MRBUS_ACTIVITY_RX_COMPLETE != mrbus_activity)
-			{
-				//clrwdt();
-				_delay_ms(1);
-				if (mrbus_state & MRBUS_RX_PKT_READY) 
-					PktHandler();
+				// We want to wait 20ms before we try a retransmit to avoid hammering the bus
+				// Because MRBus has a minimum packet size of 6 bytes @ 57.6kbps,
+				// need to check roughly every millisecond to see if we have a new packet
+				// so that we don't miss things we're receiving while waiting to transmit
+				uint8_t bus_countdown = 20;
+				while (bus_countdown-- > 0 && !mrbusIsBusIdle())
+				{
+					wdt_reset();
+					_delay_ms(1);
+					if (mrbusPktQueueDepth(&mrbusRxQueue))
+						PktHandler();
+				}
 			}
+#else
+			// MRBee is simple - because the XBee has a buffer, we never fail
+			mrbeeTransmit();
 #endif
 		}
 	}
