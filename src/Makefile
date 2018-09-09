@@ -32,30 +32,31 @@ DEVICE  = atmega328p
 F_CPU   = 20000000  # Hz
 FUSE_L  = 0xD7
 FUSE_H  = 0xD1
-FUSE_E  = 0x04
+FUSE_E  = 0xFC
 
 GITREV := 'GIT_REV=0x$(shell git rev-parse --short=6 HEAD)L'
 
 MRBUS_DIRECTORY=./mrbus/src
-PROGRAMMER_TYPE=avrispmkii
+
+# PROGRAMMER_TYPE defines the programmer to be used
+# Common options are usbtiny and avrispmkii
+#PROGRAMMER_TYPE=avrispmkii
 #PROGRAMMER_TYPE=usbtiny
+PROGRAMMER_TYPE=iseavrprog
 PROGRAMMER_PORT=usb
 
 SRCS = $(BASE_NAME).c ./avr-ds1302/ds1302.c ./lcd.c
 INCS = ./lcd.h ./avr-ds1302/ds1302.h
 
 # Wired FCM
-DEFINES = -DMRBUS -DENABLE_WATCHDOG -D$(GITREV)
-SRCS += $(MRBUS_DIRECTORY)/mrbus-avr.c $(MRBUS_DIRECTORY)/mrbus-crc.c $(MRBUS_DIRECTORY)/mrbus-queue.c
-INCS += $(MRBUS_DIRECTORY)/mrbus.h $(MRBUS_DIRECTORY)/mrbus-avr.h
+#DEFINES = -DMRBUS -DENABLE_WATCHDOG -D$(GITREV)
+#SRCS += $(MRBUS_DIRECTORY)/mrbus-avr.c $(MRBUS_DIRECTORY)/mrbus-crc.c $(MRBUS_DIRECTORY)/mrbus-queue.c
+#INCS += $(MRBUS_DIRECTORY)/mrbus.h $(MRBUS_DIRECTORY)/mrbus-avr.h
 
 # Wireless FCM
-#DEFINES = -DMRBEE -DENABLE_WATCHDOG -D$(GITREV) -DXBEE_IGNORE_FLOW=1
-#SRCS += $(MRBUS_DIRECTORY)/mrbee-avr.c $(MRBUS_DIRECTORY)/mrbus-crc.c $(MRBUS_DIRECTORY)/mrbus-queue.c
-#INCS += $(MRBUS_DIRECTORY)/mrbee.h $(MRBUS_DIRECTORY)/mrbee-avr.h
-
-# PROGRAMMER_TYPE defines the programmer to be used
-# Common options are usbtiny and avrispmkii
+DEFINES = -DMRBEE -DENABLE_WATCHDOG -D$(GITREV) -DMRBEE_IGNORE_FLOW=1
+SRCS += $(MRBUS_DIRECTORY)/mrbee-avr.c $(MRBUS_DIRECTORY)/mrbus-crc.c $(MRBUS_DIRECTORY)/mrbus-queue.c
+INCS += $(MRBUS_DIRECTORY)/mrbee.h $(MRBUS_DIRECTORY)/mrbee-avr.h
 
 AVRDUDE = avrdude -P $(PROGRAMMER_PORT) -c $(PROGRAMMER_TYPE) -p $(DEVICE) -B1 -F
 AVRDUDE_SLOW = avrdude -P $(PROGRAMMER_PORT) -c $(PROGRAMMER_TYPE) -p $(DEVICE) -B32 -F
