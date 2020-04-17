@@ -35,9 +35,9 @@ refdes=Y1
 T 55500 55700 5 10 0 0 0 0 1
 symversion=0.1
 T 56150 54900 5 10 1 1 0 0 1
-value=11.592MHz
+value=11.0592MHz
 T 55300 55000 5 10 0 1 0 0 1
-footprint=crystal-hc49
+footprint=crystal-hc49-smt
 }
 C 55500 55100 1 90 1 capacitor-1.sym
 {
@@ -639,7 +639,7 @@ N 44800 41100 44800 41200 4
 C 44000 43500 1 0 1 gnd-1.sym
 N 43900 43800 43900 43900 4
 T 47500 50300 9 10 1 0 0 6 1
-Place C8 & C9 near XBee pin 1
+Place C4 & C11 near XBee pin 1
 N 49200 45800 50300 45800 4
 {
 T 50400 45750 5 10 1 1 0 0 1
@@ -1112,3 +1112,23 @@ value=10k
 T 65600 55700 5 10 1 1 180 0 1
 refdes=R3
 }
+C 67900 46800 1 0 0 gnd-1.sym
+N 66100 47900 68000 47900 4
+N 68000 47900 68000 47100 4
+C 42800 43900 1 90 0 resistor-1.sym
+{
+T 42400 44200 5 10 0 0 90 0 1
+device=RESISTOR
+T 42100 44300 5 10 1 1 0 0 1
+refdes=R3A
+T 42200 44100 5 10 1 1 0 0 1
+value=10K
+T 42800 43900 5 10 0 0 90 0 1
+footprint=0805
+}
+N 42700 44900 42700 44800 4
+N 42700 43800 42700 43900 4
+C 42800 43500 1 0 1 gnd-1.sym
+T 44500 45100 9 10 1 0 0 6 2
+R3A can be populated if 10K isn't 
+enough of a pull-down on the /DTR pin
