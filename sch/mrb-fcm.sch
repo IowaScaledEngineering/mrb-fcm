@@ -1095,9 +1095,6 @@ footprint=0805
 N 42700 44900 42700 44800 4
 N 42700 43800 42700 43900 4
 C 42800 43500 1 0 1 gnd-1.sym
-T 44500 45100 9 10 1 0 0 6 2
-R3A can be populated if 10K isn't 
-enough of a pull-down on the /DTR pin
 C 62800 47100 1 0 0 3V3-plus-1.sym
 C 63700 43200 1 0 0 3V3-plus-1.sym
 N 57700 50500 57500 50500 4
