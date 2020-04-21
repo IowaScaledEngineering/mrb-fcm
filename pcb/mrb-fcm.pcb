@@ -1129,7 +1129,7 @@ Element["" "RPACK4-1206" "R2" "10k" 2083.00mil 1816.00mil -148.00mil -41.00mil 0
 
 	)
 
-Element["" "1825910" "SW4" "unknown" 1000.00mil 2710.00mil -223.00mil 43.00mil 1 100 ""]
+Element["" "1825910" "SW4" "unknown" 1000.00mil 2710.00mil -50.00mil -205.00mil 0 100 ""]
 (
 	Pin[3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
 	Pin[-3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
@@ -1142,7 +1142,7 @@ Element["" "1825910" "SW4" "unknown" 1000.00mil 2710.00mil -223.00mil 43.00mil 1
 
 	)
 
-Element["" "1825910" "SW3" "unknown" 1667.00mil 2710.00mil -280.00mil 7.00mil 1 100 ""]
+Element["" "1825910" "SW3" "unknown" 1667.00mil 2710.00mil -52.00mil -205.00mil 0 100 ""]
 (
 	Pin[3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
 	Pin[-3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
@@ -1155,7 +1155,7 @@ Element["" "1825910" "SW3" "unknown" 1667.00mil 2710.00mil -280.00mil 7.00mil 1 
 
 	)
 
-Element["" "1825910" "SW2" "unknown" 2333.00mil 2710.00mil -223.00mil 40.00mil 1 100 ""]
+Element["" "1825910" "SW2" "unknown" 2333.00mil 2710.00mil -48.00mil -205.00mil 0 100 ""]
 (
 	Pin[3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
 	Pin[-3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
@@ -1168,7 +1168,7 @@ Element["" "1825910" "SW2" "unknown" 2333.00mil 2710.00mil -223.00mil 40.00mil 1
 
 	)
 
-Element["" "1825910" "SW1" "unknown" 3000.00mil 2710.00mil -268.00mil 44.00mil 1 100 ""]
+Element["" "1825910" "SW1" "unknown" 3000.00mil 2710.00mil -50.00mil -205.00mil 0 100 ""]
 (
 	Pin[3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
 	Pin[-3.2500mm 2.2500mm 69.00mil 20.00mil 75.00mil 39.00mil "1" "1" "edge2,thermal(0X,1X)"]
