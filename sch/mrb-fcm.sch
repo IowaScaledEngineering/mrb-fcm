@@ -1065,7 +1065,7 @@ refdes=C13
 T 50300 61000 5 10 0 0 270 0 1
 symversion=0.1
 T 49700 60900 5 10 1 1 0 0 1
-value=0.01uF
+value=0.1uF
 T 49400 61200 5 10 0 0 0 0 1
 footprint=0805
 }
