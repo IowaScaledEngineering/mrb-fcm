@@ -34,6 +34,7 @@ PROGRAMMER_PORT=usb
 
 MRBUS_LIB=./mrbus/src/
 I2C_LIB=./avr-i2c/
+SD_LIB=./sd/
 
 # ATmega164PA 11.0592MHz @ 3.3V
 DEVICE  = atmega1284p
@@ -51,8 +52,8 @@ MRBEE_PINS =
 #DEFINES := -DGIT_REV=0x$(GITREV)L -D'VERSION_STRING="$(REV)"' -DENABLE_WATCHDOG -DHWREV_MAJOR=1 -DHWREV_MINOR=2 $(MRBEE_DEFINES) $(MRBEE_PINS)
 DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=1 -DHWREV_MINOR=2 $(MRBEE_DEFINES) $(MRBEE_PINS)
 
-SRCS = $(BASE_NAME).c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c
-INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h lcd.h rv3129.h
+SRCS = $(BASE_NAME).c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
+INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_lib)/mmc-avr.h
 
 
 CFILES    = $(filter %.c, $(SRCS))
@@ -66,7 +67,7 @@ AVRDUDE_SLOW = avrdude -P $(PROGRAMMER_PORT) -c $(PROGRAMMER_TYPE) -p $(DEVICE) 
 
 OBJS = ${CPPFILES:%.cpp=%.o} ${CFILES:%.c=%.o}
 
-INCLUDES = -I. -I$(MRBUS_LIB) -I$(I2C_LIB)
+INCLUDES = -I. -I$(MRBUS_LIB) -I$(I2C_LIB) -I$(SD_LIB)
 
 FLAGS = $(INCLUDES) -Wall -O2 -ffunction-sections -fdata-sections -fshort-enums
 CFLAGS = $(FLAGS)  -std=gnu99 

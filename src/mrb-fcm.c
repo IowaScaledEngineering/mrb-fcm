@@ -23,6 +23,7 @@ LICENSE:
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -37,7 +38,11 @@ LICENSE:
 #include "lcd.h"
 #include "avr-i2c-master.h"
 #include "rv3129.h"
-#include "string.h"
+
+#include "ff.h"
+#include "diskio.h"
+#include "mmc-avr.h"
+
 
 #ifdef MRBEE
 // If wireless, redefine the common variables and functions
@@ -149,6 +154,19 @@ void initTimeData(TimeData* t)
 	t->month = t->day = 1;
 }
 
+DWORD get_fattime (void)
+{
+	/* Get local time */
+	/* Pack date and time into a DWORD variable */
+	return	  ((DWORD)(realTime.year - 1980) << 25)
+			| ((DWORD)realTime.month << 21)
+			| ((DWORD)realTime.day << 16)
+			| ((DWORD)realTime.hours << 11)
+			| ((DWORD)realTime.minutes<< 5)
+			| ((DWORD)realTime.seconds >> 1);
+}
+
+
 void incrementTime(TimeData* t, uint8_t incSeconds)
 {
 	uint16_t i = t->seconds + incSeconds;
@@ -178,6 +196,7 @@ void FastTimeStartToFlash(TimeData* t, uint8_t whichStart)
 	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START1_M + whichStart), t->minutes);
 	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START1_S + whichStart), t->seconds);
 }
+
 void FlashToFastTimeStart(TimeData* t, uint8_t whichStart)
 {
 	initTimeData(t);
@@ -368,6 +387,7 @@ ISR(TIMER0_COMPA_vect)
 		decisecs++;
 		screenUpdateDecisecs++;
 	}
+	mmc_disk_timerproc();
 }
 
 
@@ -479,6 +499,31 @@ PktIgnore:
 	return;	
 }
 
+#define SDCARD_INSERTED_PIN  PD5
+#define SDCARD_CS_PIN        PD7
+
+void initializeSD()
+{
+	DDRD &= ~(_BV(SDCARD_INSERTED_PIN));
+	PORTD |= _BV(SDCARD_CS_PIN) | _BV(SDCARD_INSERTED_PIN);
+	DDRD  |= _BV(SDCARD_CS_PIN);
+
+
+	PORTB |= _BV(SDCARD_MOSI_PIN) | _BV(SDCARD_SCLK_PIN) | _BV(SDCARD_MISO_PIN);
+	DDRB  |= _BV(SDCARD_MOSI_PIN) | _BV(SDCARD_SCLK_PIN);
+	DDRB  &= ~(_BV(SDCARD_MISO_PIN));
+
+	SPCR = 0x52;			/* Enable SPI function in mode 0 */
+	SPSR = 0x01;			/* SPI 2x mode */
+	
+}
+
+bool sd_isInserted()
+{
+	return (PIND & _BV(SDCARD_INSERTED_PIN))?false:true;
+}
+
+
 #define LCD_BACKLIGHT_PIN  PB4
 
 void lcd_backlightOn()
@@ -516,6 +561,7 @@ void init(void)
 	wdt_reset();
 
 	initializeSwitches();
+	initializeSD();
 	i2c_master_init();
 	
 	// Set Up LCD Panel
@@ -523,6 +569,7 @@ void init(void)
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
 	lcd_gotoxy(0,0);
+	
 
 	// Set up tick timer
 	initialize100HzTimer();
@@ -775,6 +822,8 @@ void drawLittleTime(TimeData* t, uint8_t useAMPM)
 
 }
 
+
+
 int main(void)
 {
 	uint8_t buttonsPressed=0, colon=0;
@@ -784,8 +833,12 @@ int main(void)
 	uint8_t tempVar = 0;
 	uint16_t tempVar16 = 0;
 	uint16_t kloopsPerSec=0;
+	bool mounted = false;
+	uint8_t sdMountCode = 42;
+	uint8_t sdMountRetries = 0;
+	uint8_t sdFileOpenCode = 42;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
-	
+	FATFS FatFs;
 	// Application initialization
 	init();
 
@@ -809,6 +862,8 @@ int main(void)
 	loopCount = 0;
 	kloopsPerSec = 0;
 
+	mounted = false;
+
 	while (1)
 	{
 		loopCount++;
@@ -825,6 +880,43 @@ int main(void)
 			status &= ~(STATUS_READ_INPUTS);
 			buttonsPressed = debounce(readSwitches());
 		}
+
+		// Check SD card
+		if (!sd_isInserted())
+		{
+			mounted = false;
+			sdMountCode = 42;
+			sdMountRetries = 0;
+		} else if (!mounted) {
+			// Try mounting
+			if (sdMountRetries < 3)
+			{
+				sdMountCode = f_mount(&FatFs, "", 1);
+				if (FR_OK == sdMountCode)
+				{
+					mounted = true;
+					sdMountRetries = 0;
+				} else {
+					sdMountRetries++;
+				}
+			} // Otherwise we've exceeded our retries and we're done
+			
+		} else {
+			// Card in and mounted
+			sdMountCode = 77;
+			sdMountRetries = 0;
+		}
+
+
+		if (mounted)
+		{
+			FIL fsrc;
+			sdFileOpenCode = f_open(&fsrc, "butthole.txt", FA_READ);
+			f_close(&fsrc);
+		} else {
+			sdFileOpenCode = 42;
+		}
+
 
 		switch(screenState)
 		{
@@ -865,7 +957,7 @@ int main(void)
 					lcd_putc('.');
 					lcd_putc('0' + scaleFactor % 10);
 					lcd_puts(":1");
-					
+
 				} else {
 				
 					if (status & STATUS_REAL_AMPM)
@@ -883,7 +975,15 @@ int main(void)
 					drawLittleFast(&fastTime);
 //					drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
 				}
-			
+
+				lcd_gotoxy(18,0);
+				if (mounted)
+				{
+					//lcd_putc('M');
+					printDec2Dig(sdFileOpenCode);
+				}
+				else
+					lcd_putc(sd_isInserted()?'S':' ');
 				screenState = SCREEN_MAIN_IDLE;
 				break;
 
