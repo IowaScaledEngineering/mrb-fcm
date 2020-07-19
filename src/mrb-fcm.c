@@ -837,6 +837,7 @@ int main(void)
 	uint8_t sdMountCode = 42;
 	uint8_t sdMountRetries = 0;
 	uint8_t sdFileOpenCode = 42;
+	uint32_t loop = 0;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
 	FATFS FatFs;
 	// Application initialization
@@ -908,11 +909,12 @@ int main(void)
 			sdMountRetries = 0;
 		}
 
-
-/*		if (mounted)
+/* Example file write
+		if (mounted)
 		{
 			FIL fsrc;
-			sdFileOpenCode = f_open(&fsrc, "test.txt", FA_READ);
+			sdFileOpenCode = f_open(&fsrc, "test2.txt", FA_READ | FA_WRITE | FA_OPEN_APPEND);
+			f_printf(&fsrc, "Loop execution %d\n", loop++);
 			f_close(&fsrc);
 		} else {
 			sdFileOpenCode = 42;

@@ -53,7 +53,7 @@ MRBEE_PINS =
 DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=1 -DHWREV_MINOR=2 $(MRBEE_DEFINES) $(MRBEE_PINS)
 
 SRCS = $(BASE_NAME).c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
-INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_lib)/mmc-avr.h
+INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
 
 
 CFILES    = $(filter %.c, $(SRCS))
