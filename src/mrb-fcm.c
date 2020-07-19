@@ -881,7 +881,8 @@ int main(void)
 			buttonsPressed = debounce(readSwitches());
 		}
 
-		// Check SD card
+		// Check SD card - try to mount if we're not mounted already
+		// If the card is ejected, reset mounted status
 		if (!sd_isInserted())
 		{
 			mounted = false;
@@ -908,14 +909,14 @@ int main(void)
 		}
 
 
-		if (mounted)
+/*		if (mounted)
 		{
 			FIL fsrc;
-			sdFileOpenCode = f_open(&fsrc, "butthole.txt", FA_READ);
+			sdFileOpenCode = f_open(&fsrc, "test.txt", FA_READ);
 			f_close(&fsrc);
 		} else {
 			sdFileOpenCode = 42;
-		}
+		}*/
 
 
 		switch(screenState)
