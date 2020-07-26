@@ -678,7 +678,7 @@ void printDec2DigWZero(uint8_t val)
 	lcd_putc('0' + (val%10));
 }
 
-const uint8_t UpperLeftDiag[8] =
+const uint8_t UpperLeftDiag[8] PROGMEM =
 {
 	0b00000111,
 	0b00001111,
@@ -690,7 +690,7 @@ const uint8_t UpperLeftDiag[8] =
 	0b00011111
 };
 
-const uint8_t  UpperBlock[8] =
+const uint8_t  UpperBlock[8] PROGMEM =
 {
 	0b00011111,
 	0b00011111,
@@ -702,7 +702,7 @@ const uint8_t  UpperBlock[8] =
 	0b00000000
 };
 
-const uint8_t UpperRightDiag[8] =
+const uint8_t UpperRightDiag[8] PROGMEM =
 {
 	0b00011100,
 	0b00011110,
@@ -714,7 +714,7 @@ const uint8_t UpperRightDiag[8] =
 	0b00011111
 };
 
-const uint8_t LowerLeftDiag[8] =
+const uint8_t LowerLeftDiag[8] PROGMEM =
 {
 	0b00011111,
 	0b00011111,
@@ -727,7 +727,7 @@ const uint8_t LowerLeftDiag[8] =
 };
 
 
-const uint8_t LowerBlock[8] =
+const uint8_t LowerBlock[8] PROGMEM =
 {
 	0b00000000,
 	0b00000000,
@@ -739,7 +739,7 @@ const uint8_t LowerBlock[8] =
 	0b00011111
 };
 
-const uint8_t LowerRightDiag[8] =
+const uint8_t LowerRightDiag[8] PROGMEM =
 {
 	0b00011111,
 	0b00011111,
@@ -751,7 +751,7 @@ const uint8_t LowerRightDiag[8] =
 	0b00011100
 };
 
-const uint8_t MiddleBlock[8] =
+const uint8_t MiddleBlock[8] PROGMEM =
 {
 	0b00011111,
 	0b00011111,
@@ -762,6 +762,30 @@ const uint8_t MiddleBlock[8] =
 	0b00011111,
 	0b00011111
 };
+
+const uint8_t SDCardBlock[8] PROGMEM = 
+{
+	0b00000,
+	0b11110,
+	0b11111,
+	0b11111,
+	0b11110,
+	0b11111,
+	0b11111,
+	0b11111
+};
+
+void lcd_setup_custom_p(uint8_t charNum, const uint8_t* charDefinition)
+{
+	uint8_t i;
+	lcd_command(0x40 + charNum * 8);
+	for(i=0; i<8; i++)
+	{
+		lcd_command(0x40 + charNum * 8 + i);
+		uint8_t c = pgm_read_byte(&charDefinition[i]);
+		lcd_data(c);
+	}
+}
 
 void lcd_setup_custom(uint8_t charNum, const uint8_t* charDefinition)
 {
@@ -777,15 +801,14 @@ void lcd_setup_custom(uint8_t charNum, const uint8_t* charDefinition)
 void lcd_setup_bigdigits()
 {
 	// assignes each segment a write number
-	lcd_setup_custom(0, UpperLeftDiag);
-	lcd_setup_custom(1, UpperBlock);
-	lcd_setup_custom(2, UpperRightDiag);
-	lcd_setup_custom(3, LowerLeftDiag);
-	lcd_setup_custom(4, LowerBlock);
-	lcd_setup_custom(5, LowerRightDiag);
-	lcd_setup_custom(6, MiddleBlock);
+	lcd_setup_custom_p(0, UpperLeftDiag);
+	lcd_setup_custom_p(1, UpperBlock);
+	lcd_setup_custom_p(2, UpperRightDiag);
+	lcd_setup_custom_p(3, LowerLeftDiag);
+	lcd_setup_custom_p(4, LowerBlock);
+	lcd_setup_custom_p(5, LowerRightDiag);
+	lcd_setup_custom_p(6, MiddleBlock);
 	lcd_gotoxy(0,0);
-
 }
 
 const uint8_t bigDigits[14][6] = 

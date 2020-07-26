@@ -2,11 +2,11 @@
 #Title:    MRB-FCM Makefile
 #Authors:  Michael Petersen <railfan@drgw.net>
 #          Nathan Holmes <maverick@drgw.net>
-#File:     MRB-AVRTEMPLATE Makefile
+#File:     MRB-FCM Makefile
 #License:  GNU General Public License v3
 #
 #LICENSE:
-#    Copyright (C) 2015 Nathan Holmes and Michael Petersen
+#    Copyright (C) 2020 Nathan Holmes and Michael Petersen
 #
 #    Derived from example WinAVR project Makefile
 #
@@ -27,46 +27,56 @@
 
 BASE_NAME = mrb-fcm
 
-# ATmega328P 20MHz @ 5.0V
-DEVICE  = atmega328p
-F_CPU   = 20000000  # Hz
-FUSE_L  = 0xD7
-FUSE_H  = 0xD1
-FUSE_E  = 0xFC
-
-GITREV := 'GIT_REV=0x$(shell git rev-parse --short=6 HEAD)L'
-
-MRBUS_DIRECTORY=./mrbus/src
-
-# PROGRAMMER_TYPE defines the programmer to be used
-# Common options are usbtiny and avrispmkii
 #PROGRAMMER_TYPE=avrispmkii
 #PROGRAMMER_TYPE=usbtiny
 PROGRAMMER_TYPE=iseavrprog
 PROGRAMMER_PORT=usb
 
-SRCS = $(BASE_NAME).c ./avr-ds1302/ds1302.c ./lcd.c
-INCS = ./lcd.h ./avr-ds1302/ds1302.h
+MRBUS_LIB=./mrbus/src/
+I2C_LIB=./avr-i2c/
+SD_LIB=./sd/
 
-# Wired FCM
-#DEFINES = -DMRBUS -DENABLE_WATCHDOG -D$(GITREV)
-#SRCS += $(MRBUS_DIRECTORY)/mrbus-avr.c $(MRBUS_DIRECTORY)/mrbus-crc.c $(MRBUS_DIRECTORY)/mrbus-queue.c
-#INCS += $(MRBUS_DIRECTORY)/mrbus.h $(MRBUS_DIRECTORY)/mrbus-avr.h
+# ATmega164PA 11.0592MHz @ 3.3V
+DEVICE  = atmega1284p
+F_CPU   = 11059200  # Hz
+FUSE_L  = 0xFF
+FUSE_H  = 0xD1
+FUSE_E  = 0xFD
 
-# Wireless FCM
-DEFINES = -DMRBEE -DENABLE_WATCHDOG -D$(GITREV) -DMRBEE_IGNORE_FLOW=1
-SRCS += $(MRBUS_DIRECTORY)/mrbee-avr.c $(MRBUS_DIRECTORY)/mrbus-crc.c $(MRBUS_DIRECTORY)/mrbus-queue.c
-INCS += $(MRBUS_DIRECTORY)/mrbee.h $(MRBUS_DIRECTORY)/mrbee-avr.h
+GITREV := $(shell git rev-parse --short=6 HEAD)
+#REV    := $(shell ./git-revision.sh)
 
-AVRDUDE = avrdude -P $(PROGRAMMER_PORT) -c $(PROGRAMMER_TYPE) -p $(DEVICE) -B1 -F
-AVRDUDE_SLOW = avrdude -P $(PROGRAMMER_PORT) -c $(PROGRAMMER_TYPE) -p $(DEVICE) -B32 -F
+MRBEE_DEFINES = -DMRBEE -DMRBEE_IGNORE_FLOW
+MRBEE_PINS = 
 
-OBJS = ${SRCS:.c=.o}
-INCLUDES = -I. -I$(MRBUS_DIRECTORY) -I./avr-ds1302/
-CFLAGS  = $(INCLUDES) -Wall -O2 -std=gnu99 -ffunction-sections -fdata-sections
+#DEFINES := -DGIT_REV=0x$(GITREV)L -D'VERSION_STRING="$(REV)"' -DENABLE_WATCHDOG -DHWREV_MAJOR=1 -DHWREV_MINOR=2 $(MRBEE_DEFINES) $(MRBEE_PINS)
+DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=1 -DHWREV_MINOR=2 $(MRBEE_DEFINES) $(MRBEE_PINS)
+
+SRCS = $(BASE_NAME).c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
+INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
+
+
+CFILES    = $(filter %.c, $(SRCS))
+EXTC     := $(foreach dir, $(EXT), $(wildcard $(dir)/*.c))
+CPPFILES  = $(filter %.cpp, $(SRCS))
+EXTCPP   := $(foreach dir, $(EXT), $(wildcard $(dir)/*.cpp))
+OBJ       = $(CFILES:.c=.o) $(EXTC:.c=.o) $(CPPFILES:.cpp=.o) $(EXTCPP:.cpp=.o)
+
+AVRDUDE = avrdude -P $(PROGRAMMER_PORT) -c $(PROGRAMMER_TYPE) -p $(DEVICE) -B1
+AVRDUDE_SLOW = avrdude -P $(PROGRAMMER_PORT) -c $(PROGRAMMER_TYPE) -p $(DEVICE) -B32
+
+OBJS = ${CPPFILES:%.cpp=%.o} ${CFILES:%.c=%.o}
+
+INCLUDES = -I. -I$(MRBUS_LIB) -I$(I2C_LIB) -I$(SD_LIB)
+
+FLAGS = $(INCLUDES) -Wall -O2 -ffunction-sections -fdata-sections -fshort-enums
+CFLAGS = $(FLAGS)  -std=gnu99 
+CPPFLAGS = $(FLAGS)  -std=gnu++11
 LDFLAGS = -Wl,-gc-sections
 
-COMPILE = avr-gcc $(DEFINES) -DF_CPU=$(F_CPU) $(CFLAGS) $(LDFLAGS) -mmcu=$(DEVICE)
+GCC = avr-gcc $(DEFINES) -DF_CPU=$(F_CPU) $(CFLAGS) $(LDFLAGS) -mmcu=$(DEVICE)
+GPP = avr-g++ $(DEFINES) -DF_CPU=$(F_CPU) $(CPPFLAGS) $(LDFLAGS) -mmcu=$(DEVICE)
+
 
 # -E -dM options preprocess only and output results of #define
 #COMPILE = avr-gcc -Wall -Os -DF_CPU=$(F_CPU) $(CFLAGS) -mmcu=$(DEVICE) -E -dM
@@ -80,15 +90,21 @@ help:
 	@echo "make read ...... read the fuses"
 	@echo "make size ...... memory usage"
 	@echo "make clean ..... delete objects and hex file"
+	@echo "make release.... produce release tarball"
 	@echo "make terminal... open up avrdude terminal"
 
 hex: $(BASE_NAME).hex
-
-program: fuse flash
+#	@cp $(BASE_NAME).hex hex/$(BASE_NAME)_v$(REV)_$(GITREV).hex
+	@echo;
+	@echo Version: $(REV);
+	@echo GIT rev: $(GITREV);
+	@echo;
 
 setup:
 	git submodule init
 	git submodule update
+
+program: fuse flash
 
 terminal:
 	$(AVRDUDE_SLOW) -t
@@ -108,18 +124,29 @@ size:
 # rule for uploading firmware:
 flash: $(BASE_NAME).hex
 	$(AVRDUDE) -U flash:w:$(BASE_NAME).hex:i
+	@echo;
+	@echo Version: $(REV);
+	@echo GIT rev: $(GITREV);
+	@echo;
+
+firmware:
+	$(AVRDUDE) -U flash:w:$(HEX):i
 
 # rule for deleting dependent files (those which can be built by Make):
 clean:
-	rm -f $(BASE_NAME).hex $(BASE_NAME).lst $(BASE_NAME).obj $(BASE_NAME).cof $(BASE_NAME).list $(BASE_NAME).map $(BASE_NAME).eep.hex $(BASE_NAME).elf $(BASE_NAME).s $(OBJS) *.o *.tgz *~
+	rm -f $(BASE_NAME).hex $(BASE_NAME).lst $(BASE_NAME).obj $(BASE_NAME).cof $(BASE_NAME).list $(BASE_NAME).map $(BASE_NAME).eep.hex $(BASE_NAME).elf $(BASE_NAME).s *.o $(OBJS) *.tgz *~
 
 # Generic rule for compiling C files:
 .c.o: $(INCS)
-	$(COMPILE) -c $< -o $@
+	$(GCC) -c $< -o $@
+
+# Generic rule for compiling C files:
+.cpp.o: $(INCS)
+	$(GPP) -c $< -o $@
 
 # Generic rule for assembling Assembler source files:
 .S.o:
-	$(COMPILE) -x assembler-with-cpp -c $< -o $@
+	$(GCC) -x assembler-with-cpp -c $< -o $@
 # "-x assembler-with-cpp" should not be necessary since this is the default
 # file type for the .S (with capital S) extension. However, upper case
 # characters are not always preserved on Windows. To ensure WinAVR
@@ -127,12 +154,12 @@ clean:
 
 # Generic rule for compiling C to assembler, used for debugging only.
 .c.s:
-	$(COMPILE) -S $< -o $@
+	$(GCC) -S $< -o $@
 
 # file targets:
 
 $(BASE_NAME).elf: $(OBJS)
-	$(COMPILE) -o $(BASE_NAME).elf $(OBJS)
+	$(GPP) -o $(BASE_NAME).elf $(OBJS)
 
 $(BASE_NAME).hex: $(BASE_NAME).elf
 	rm -f $(BASE_NAME).hex $(BASE_NAME).eep.hex
@@ -146,3 +173,46 @@ disasm:	$(BASE_NAME).elf
 
 PWD := $(shell pwd)
 
+release: hex
+	@echo -n "Creating temporary build directories..."
+	@$(eval BTMPDIR := $(shell mktemp -d))
+	@$(eval TMPDIR := $(BTMPDIR)/$(BASE_NAME))
+	@$(eval BOILERPLATE_FILES := $(shell find ../../docs/release-boilerplate -type f -name *.txt -print))
+	@$(eval RELEASE_TIME := $(shell date +"%d%b%Y-%H%Mh"))
+	@mkdir -p $(TMPDIR)/mrbus/src
+	@mkdir -p $(TMPDIR)/$(BASE_NAME)/src
+	@echo "  [done]"
+
+	@echo -n "Copying boilerplate files..."
+	@cp $(BOILERPLATE_FILES) $(TMPDIR)
+	@echo "  [done]"
+
+	@echo -n "Copying Makefile..."
+	@cp Makefile $(TMPDIR)/$(BASE_NAME)/src/Makefile
+
+	@echo -n "Copying object..."
+	@cp $(BASE_NAME).hex $(TMPDIR)/$(BASE_NAME)/src/$(BASE_NAME).hex
+	@echo "  [done]"
+
+	@echo -n "Copying source files..."
+	@tar cPf - $(INCS) | tar xPf - -C $(TMPDIR)/$(BASE_NAME)/src/
+	@echo "  [done]"
+
+	@echo -n "Copying include files..."
+	@tar cPf - $(SRCS) | tar xPf - -C $(TMPDIR)/$(BASE_NAME)/src/
+	@echo "  [done]"
+
+	@echo -n "Writing file SVN statuses..."
+	@echo "### Archive built at $(RELEASE_TIME)" > $(TMPDIR)/$(BASE_NAME)/src/FILE_SVN_VERSIONS
+	@svn status -v $(BOILERPLATE_FILES) >> $(TMPDIR)/$(BASE_NAME)/src/FILE_SVN_VERSIONS
+	@svn status -v Makefile >> $(TMPDIR)/$(BASE_NAME)/src/FILE_SVN_VERSIONS
+	@svn status -v $(INCS) >> $(TMPDIR)/$(BASE_NAME)/src/FILE_SVN_VERSIONS
+	@svn status -v $(SRCS) >> $(TMPDIR)/$(BASE_NAME)/src/FILE_SVN_VERSIONS
+	@echo "  [done]"
+	
+
+	@echo -n "Creating tarball..."
+	@tar zcf $(BASE_NAME)-$(RELEASE_TIME).tgz -C $(BTMPDIR) $(BASE_NAME)
+	@echo "  [done]"
+
+	@echo "Release in $(BASE_NAME)-$(RELEASE_TIME).tgz"
