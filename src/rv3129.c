@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include "rv3129.h"
 #include "avr-i2c-master.h"
 
@@ -33,6 +34,8 @@ int8_t rv3129_readTemperature(void)
 	i2c_transmit(i2cBuf, 2, 1);
 	while(i2c_busy());
 	successful = i2c_receive(i2cBuf, 2);
+	if (!successful)
+		return (0);
 	return (int8_t)((int16_t)i2cBuf[1] - 60);
 }
 
@@ -58,7 +61,8 @@ uint8_t rv3129_readControl(void)
 	i2c_transmit(i2cBuf, 2, 1);
 	while(i2c_busy());
 	successful = i2c_receive(i2cBuf, 2);
-
+	if (!successful)
+		return 0;
 	return i2cBuf[1];
 }
 
@@ -124,7 +128,7 @@ void rv3129_writeDate(TimeData* dt)
 
 	i2cBuf[0] = RV3129_I2C_ADDR;
 	i2cBuf[1] = 0x0B; // Start of date/time page
-	i2cBuf[2] = 0x3F & toBCD(min(31,dt->day));
+	i2cBuf[2] = dt->hours;
 	i2c_transmit(i2cBuf, 3, 1);
 	
 	i2cBuf[0] = RV3129_I2C_ADDR;
@@ -151,6 +155,9 @@ void rv3129_readTime(TimeData* dt)
 	while(i2c_busy());
 	successful = i2c_receive(i2cBuf, 8);
 
+	if (!successful)
+		return;
+
 	dt->seconds = fromBCD(i2cBuf[1] & 0x7F);
 	dt->minutes = fromBCD(i2cBuf[2] & 0x7F);
 	
@@ -170,4 +177,88 @@ void rv3129_readTime(TimeData* dt)
 	dt->month = fromBCD(i2cBuf[6] & 0x1F);
 	dt->year = 2000 + fromBCD(i2cBuf[7] & 0x3F);
 
+}
+
+uint8_t ft_checksum(uint8_t *data)
+{
+	uint8_t checksum = 0xCC;
+	for (uint8_t i=0; i<3; i++)
+		checksum ^= data[i];
+	return checksum;
+}
+
+void rv3129_writeFastTime(TimeData* dt)
+{
+	uint8_t i2cBuf[10];
+	static uint8_t slot = 0;
+	uint8_t checksum = 0;
+	
+	slot++;
+	// Alternate between slots 
+	memset(i2cBuf, 0, sizeof(i2cBuf));
+
+	i2cBuf[0] = RV3129_I2C_ADDR;
+	i2cBuf[1] = (slot & 0x01)?0x3A:0x3D; // Start of FT page 1 / 2
+	i2cBuf[2] = dt->hours;  // 0x39
+	i2cBuf[3] = dt->minutes;  //0x3A
+	i2cBuf[4] = dt->seconds;  //0x3B
+	checksum = ft_checksum(&i2cBuf[2]);
+	i2c_transmit(i2cBuf, 5, 0);
+
+	i2cBuf[0] = RV3129_I2C_ADDR;
+	i2cBuf[1] = 0x38; // Set valid pointer to #1
+	i2cBuf[2] = (slot & 0x01)?1:2;
+	i2cBuf[3] = checksum;
+	i2c_transmit(i2cBuf, 4, 0);
+	while(i2c_busy());
+}
+
+bool rv3129_readFastTime(TimeData* dt)
+{
+	uint8_t i2cBuf[10];
+	uint8_t slot = 0;
+	uint8_t storedChecksum = 0;
+	uint8_t successful = 0;
+	
+	memset(i2cBuf, 0, sizeof(i2cBuf));    
+
+	i2cBuf[0] = RV3129_I2C_ADDR;
+	i2cBuf[1] = 0x38; // Fast Time Valid Slot Indicator
+	i2c_transmit(i2cBuf, 2, 0);
+
+	// Read last valid slot indicator
+	memset(i2cBuf, 0, sizeof(i2cBuf));  
+	i2cBuf[0] = RV3129_I2C_ADDR | 0x01;  // Read address
+	i2c_transmit(i2cBuf, 3, 1);
+	while(i2c_busy());
+	successful = i2c_receive(i2cBuf, 3);
+	if (!successful)
+		return false;
+	
+	slot = i2cBuf[1];
+	storedChecksum = i2cBuf[2];
+	if (slot != 1 && slot != 2)
+		return false;
+	
+	i2cBuf[0] = RV3129_I2C_ADDR;
+	i2cBuf[1] = (slot & 0x01)?0x3A:0x3D; // Start of FT page 1 / 2
+	i2c_transmit(i2cBuf, 2, 0);
+	
+	memset(i2cBuf, 0, sizeof(i2cBuf));  
+	i2cBuf[0] = RV3129_I2C_ADDR | 0x01;  // Read address
+	i2c_transmit(i2cBuf, 4, 1);
+	while(i2c_busy());
+	successful = i2c_receive(i2cBuf, 4);
+	if (!successful)
+		return false;
+
+	if (storedChecksum != ft_checksum(&i2cBuf[1]))
+		return false;
+		
+
+	dt->hours = i2cBuf[1];
+	dt->minutes = i2cBuf[2];
+	dt->seconds = i2cBuf[3];
+
+	return true;
 }

@@ -38,6 +38,7 @@ LICENSE:
 #include "lcd.h"
 #include "avr-i2c-master.h"
 #include "rv3129.h"
+#include "dmx.h"
 
 #include "ff.h"
 #include "diskio.h"
@@ -96,6 +97,7 @@ uint8_t thAlternator = 0;
 #define STATUS_FAST_HOLDING 0x10 // This hold flag indicates we're actually in hold
 #define STATUS_FAST_HOLD   0x20  // This flag indicates that we start going into fast in hold
 #define STATUS_TEMP_DEG_F  0x40
+#define STATUS_SEND_DMX    0x80
 
 #define TIME_FLAGS_DISP_FAST       0x01
 #define TIME_FLAGS_DISP_FAST_HOLD  0x02
@@ -127,10 +129,42 @@ uint8_t thAlternator = 0;
 #define EE_ADDR_FAST_RATIO_H   0x3A
 #define EE_ADDR_FAST_RATIO_L   0x3B
 #define EE_ADDR_TH_SRC_ADDR    0x3C
-#define EE_ADDR_TH_TIMEOUT_L   0x3D
-#define EE_ADDR_TH_TIMEOUT_H   0x3E
+#define EE_ADDR_TH_TIMEOUT_H   0x3D
+#define EE_ADDR_TH_TIMEOUT_L   0x3E
+
 
 uint32_t loopCount = 0;
+
+
+void writeDefaultEEPROMConfig()
+{
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START1_H), 6);
+
+	eeprom_write_byte((uint8_t*)(EE_ADDR_CONF_FLAGS), CONF_FLAG_FAST_AMPM | CONF_FLAG_REAL_AMPM | CONF_FLAG_FAST_HOLD_START | CONF_FLAG_TEMP_DEG_F);
+	
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START1_H), 6);
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START1_M), 0);
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START1_S), 0);
+
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START2_H), 12);
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START2_M), 0);
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START2_S), 0);
+
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START3_H), 18);
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START3_M), 0);
+	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START3_S), 0);
+
+	uint16_t u16 = 40;
+	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, scaleFactor & 0xFF);
+	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (scaleFactor>>8));
+
+	eeprom_write_byte((uint8_t*)(EE_ADDR_TH_SRC_ADDR), 0); // No TH by default
+	
+	u16 = 600; // 60 second timeout on the TH
+	eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L, u16 & 0xFF);
+	eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H, 0xFF & (u16>>8));
+
+}
 
 void blankCursorLine()
 {
@@ -351,13 +385,15 @@ const ConfigurationOption configurationOptions[] =
 
 void initialize100HzTimer(void)
 {
-	// Set up timer 0 for 100Hz interrupts
-	TCNT0 = 0;
-	OCR0A = 0x6C;
-	TCCR0A = _BV(WGM01);
-	TCCR0B = _BV(CS02) | _BV(CS00);
-	TIMSK0 |= _BV(OCIE0A);
-
+	// Set up timer 3 for 100Hz interrupts
+	TCNT3 = 0;
+	OCR3A = 0x0752;
+	TCCR3A = 0;
+	TCCR3B = _BV(WGM32) | _BV(CS31) | _BV(CS30);
+	TCCR3C = 0;
+	TIFR3 |= _BV(OCF3A);
+	TIMSK3 |= _BV(OCIE3A);
+	
 	ticks = 0;
 	decisecs = 0;
 	fastDecisecs = 0;
@@ -365,13 +401,16 @@ void initialize100HzTimer(void)
 	screenUpdateDecisecs = 0;
 }
 
-ISR(TIMER0_COMPA_vect)
+ISR(TIMER3_COMPA_vect)
 {
+	static uint8_t ticks = 0;
 	if (ticks & 0x01)
 		status |= STATUS_READ_INPUTS;
 
 	if (++ticks >= 10)
 	{
+		status |= STATUS_SEND_DMX;
+
 		ticks = 0;
 		if (STATUS_FAST_ACTIVE == (status & (STATUS_FAST_ACTIVE | STATUS_FAST_HOLDING)))
 		{
@@ -389,9 +428,6 @@ ISR(TIMER0_COMPA_vect)
 	}
 	mmc_disk_timerproc();
 }
-
-
-
 
 void PktHandler(void)
 {
@@ -558,18 +594,17 @@ void init(void)
 	wdt_reset();
 	wdt_enable(WDTO_1S);
 
-	wdt_reset();
-
 	initializeSwitches();
 	initializeSD();
 	i2c_master_init();
+	dmx_initialize();
 	
 	// Set Up LCD Panel
+	wdt_reset();
 	lcd_backlightOn();
 	lcd_init(LCD_DISP_ON);
 	lcd_clrscr();
 	lcd_gotoxy(0,0);
-	
 
 	// Set up tick timer
 	initialize100HzTimer();
@@ -579,11 +614,13 @@ void init(void)
 
 	// Setup real time data
 	initTimeData(&realTime);
+	// Get current real time from RTC
 	rv3129_readTime(&realTime);
 
 	initTimeData(&fastTime);
-	FlashToFastTimeStart(&fastTime, 0);
-
+	if (!rv3129_readFastTime(&fastTime))
+		FlashToFastTimeStart(&fastTime, 0); // If the read failed, go get the last one
+	
 	status = eeprom_read_byte((uint8_t*)EE_ADDR_CONF_FLAGS);
 	
 	scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
@@ -837,7 +874,7 @@ int main(void)
 	uint8_t sdMountCode = 42;
 	uint8_t sdMountRetries = 0;
 	uint8_t sdFileOpenCode = 42;
-	uint32_t loop = 0;
+//	uint32_t loop = 0;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
 	FATFS FatFs;
 	// Application initialization
@@ -880,6 +917,12 @@ int main(void)
 		{
 			status &= ~(STATUS_READ_INPUTS);
 			buttonsPressed = debounce(readSwitches());
+		}
+
+		if (status & STATUS_SEND_DMX)
+		{
+			dmx_startXmit();
+			status &= ~(STATUS_SEND_DMX);
 		}
 
 		// Check SD card - try to mount if we're not mounted already
@@ -944,7 +987,7 @@ int main(void)
 					else
 						drawBigTime(&fastTime, status & STATUS_FAST_AMPM);
 						
-						
+					rv3129_writeFastTime(&fastTime);
 					// If we have a TH node and packet within timeout, alternate between real and TH
 					if (0 != thSourceAddr && 0 != thTimeout && thAlternator >= (TH_ALTERNATOR_MAX/2))
 						drawLittleTempHum();

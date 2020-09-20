@@ -38,7 +38,7 @@ SD_LIB=./sd/
 
 # ATmega164PA 11.0592MHz @ 3.3V
 DEVICE  = atmega1284p
-F_CPU   = 11059200  # Hz
+F_CPU   = 12000000  # Hz
 FUSE_L  = 0xFF
 FUSE_H  = 0xD1
 FUSE_E  = 0xFD
@@ -50,11 +50,17 @@ MRBEE_DEFINES = -DMRBEE -DMRBEE_IGNORE_FLOW
 MRBEE_PINS = 
 
 #DEFINES := -DGIT_REV=0x$(GITREV)L -D'VERSION_STRING="$(REV)"' -DENABLE_WATCHDOG -DHWREV_MAJOR=1 -DHWREV_MINOR=2 $(MRBEE_DEFINES) $(MRBEE_PINS)
-DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=1 -DHWREV_MINOR=2 $(MRBEE_DEFINES) $(MRBEE_PINS)
+#DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 $(MRBEE_DEFINES) $(MRBEE_PINS)
 
-SRCS = $(BASE_NAME).c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
-INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
+# Wireless MRBee
+#DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 $(MRBEE_DEFINES) $(MRBEE_PINS)
+#SRCS = $(BASE_NAME).c dmx.c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
+#INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h dmx.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
 
+# Wired MRBus
+DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 -DMRBUS=1
+SRCS = $(BASE_NAME).c dmx.c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbus-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
+INCS = $(MRBUS_LIB)/mrbus.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbus-avr.h dmx.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
 
 CFILES    = $(filter %.c, $(SRCS))
 EXTC     := $(foreach dir, $(EXT), $(wildcard $(dir)/*.c))
