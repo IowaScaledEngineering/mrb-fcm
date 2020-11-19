@@ -128,7 +128,7 @@ void rv3129_writeDate(TimeData* dt)
 
 	i2cBuf[0] = RV3129_I2C_ADDR;
 	i2cBuf[1] = 0x0B; // Start of date/time page
-	i2cBuf[2] = dt->hours;
+	i2cBuf[2] = toBCD(dt->day);
 	i2c_transmit(i2cBuf, 3, 1);
 	
 	i2cBuf[0] = RV3129_I2C_ADDR;
