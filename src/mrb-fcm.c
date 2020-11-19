@@ -110,7 +110,6 @@ uint8_t thAlternator = 0;
 #define CONF_FLAG_FAST_HOLD_START    0x20
 #define CONF_FLAG_TEMP_DEG_F         0x40
 
-
 #define EE_ADDR_FAST_START1_H   0x30
 #define EE_ADDR_FAST_START1_M   0x31
 #define EE_ADDR_FAST_START1_S   0x32
@@ -130,10 +129,23 @@ uint8_t thAlternator = 0;
 
 uint32_t loopCount = 0;
 
+void initTimeData(TimeData* t)
+{
+	t->seconds = t->minutes = t->hours = 0;
+	t->dayOfWeek = 0;
+	t->year = 2020;
+	t->month = t->day = 1;
+}
 
 void writeDefaultEEPROMConfig()
 {
-	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START1_H), 6);
+	uint16_t u16 = 40;
+
+	eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR, 0x03);
+
+	u16 = 20;
+	eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_L, u16 & 0xFF);
+	eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_H, 0xFF & (u16>>8));
 
 	eeprom_write_byte((uint8_t*)(EE_ADDR_CONF_FLAGS), CONF_FLAG_FAST_AMPM | CONF_FLAG_REAL_AMPM | CONF_FLAG_FAST_HOLD_START | CONF_FLAG_TEMP_DEG_F);
 	
@@ -149,9 +161,10 @@ void writeDefaultEEPROMConfig()
 	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START3_M), 0);
 	eeprom_write_byte((uint8_t*)(EE_ADDR_FAST_START3_S), 0);
 
-	uint16_t u16 = 40;
-	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, scaleFactor & 0xFF);
-	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (scaleFactor>>8));
+	u16 = 40;
+	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, u16 & 0xFF);
+	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (u16>>8));
+
 
 	eeprom_write_byte((uint8_t*)(EE_ADDR_TH_SRC_ADDR), 0); // No TH by default
 	
@@ -160,6 +173,18 @@ void writeDefaultEEPROMConfig()
 	eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H, 0xFF & (u16>>8));
 
 }
+
+void firstTimeInitConfig()
+{
+	TimeData initFastTime;
+	initTimeData(&initFastTime);
+	rv3129_systemReset();
+	rv3129_writeFastTime(&initFastTime);
+	rv3129_writeTime(&initFastTime);
+	rv3129_writeDate(&initFastTime);
+	writeDefaultEEPROMConfig();
+}
+
 
 void blankCursorLine()
 {
@@ -174,14 +199,6 @@ void storeConfiguration(uint8_t confStatus)
 
 TimeData realTime;
 TimeData fastTime;
-
-void initTimeData(TimeData* t)
-{
-	t->seconds = t->minutes = t->hours = 0;
-	t->dayOfWeek = 0;
-	t->year = 2012;
-	t->month = t->day = 1;
-}
 
 DWORD get_fattime (void)
 {
@@ -344,7 +361,11 @@ typedef enum
 	SCREEN_CONF_THTIMEOUT_DRAW  = 181,
 	SCREEN_CONF_THTIMEOUT_IDLE  = 182,
 	SCREEN_CONF_THTIMEOUT_CONFIRM = 183,	
-		
+
+	SCREEN_CONF_RESET_SETUP = 245,
+	SCREEN_CONF_RESET_DRAW  = 246,
+	SCREEN_CONF_RESET_IDLE  = 247,
+
 	SCREEN_CONF_DIAG_SETUP = 250,
 	SCREEN_CONF_DIAG_DRAW  = 251,
 	SCREEN_CONF_DIAG_IDLE  = 252,
@@ -389,7 +410,8 @@ const ConfigurationOption configurationOptions[] =
   { "TH Address",     SCREEN_CONF_THADDR_SETUP },
   { "TH Timeout", SCREEN_CONF_THTIMEOUT_SETUP },
   { "Temperature Units", SCREEN_CONF_TEMPU_SETUP },
-  { "Diagnostics",    SCREEN_CONF_DIAG_SETUP },  
+  { "Diagnostics",    SCREEN_CONF_DIAG_SETUP },
+  { "Factory Reset",      SCREEN_CONF_RESET_SETUP },  
 };
 
 #define NUM_RATIO_OPTIONS  (sizeof(ratioOptions)/sizeof(ConfigurationOption))
@@ -648,11 +670,7 @@ void init(void)
 	// Because scale factor is used in the interrupt, read it up front
 	scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
 	if (scaleFactor < 10 || scaleFactor > 999)
-	{
-		scaleFactor = 10;
-		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, scaleFactor & 0xFF);
-		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (scaleFactor>>8));
-	}
+		scaleFactor = 40;
 
 	// Enable interrupts
 	sei();
@@ -678,11 +696,7 @@ void init(void)
 
 	if (thTimeoutReset < 10 || thTimeoutReset > 9999)
 	{
-		thTimeoutReset = 10;
-		eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L, thTimeoutReset & 0xFF);
-		eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H, 0xFF & (thTimeoutReset>>8));
-		thTimeoutReset = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L) 
-			| (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H)) << 8);			
+		thTimeoutReset = 600;
 	}
 			
 	// Initialize MRBus address from EEPROM address 1
@@ -695,11 +709,7 @@ void init(void)
 			
 	// If the update interval is garbage, set it to 2 seconds
 	if (0xFFFF == updateXmitInterval)
-	{
-		eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_L, 20);
-		eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_H, 0);
 		updateXmitInterval = 20;
-	}
 }
 
 void drawBigHold()
@@ -1987,8 +1997,81 @@ int main(void)
 				{
 					screenState = SCREEN_CONF_MENU_DRAW;
 				}
-				buttonsPressed = 0;		
+				buttonsPressed = 0;
 				break;
+				
+//  Factory Reset Screen
+//  00000000001111111111
+//  01234567890123456789
+// [CLEAR ALL SETTINGS? ]
+// [ Press YES n more   ]
+// [ times to confirm   ]
+// [ YES! YES!     CNCL ]
+
+			case SCREEN_CONF_RESET_SETUP:
+				lcd_clrscr();
+				confSaveVar = 5;
+				screenState = SCREEN_CONF_RESET_DRAW;
+				break;
+
+			case SCREEN_CONF_RESET_DRAW:
+				lcd_gotoxy(0,0);
+				lcd_puts_p(PSTR("CLEAR ALL SETTINGS?"));
+
+				if (confSaveVar > 0)
+				{
+					lcd_gotoxy(1,1);
+					lcd_puts_p(PSTR("Press YES n more"));
+					lcd_gotoxy(1,2);
+					lcd_puts_p(PSTR("times to confirm"));
+					lcd_gotoxy(11,1);
+					lcd_putc(confSaveVar + '0');
+					drawSoftKeys_p(PSTR("YES!"), PSTR(""), PSTR(""), PSTR("CNCL"));
+				} else { 
+					lcd_gotoxy(0,1);
+					lcd_puts_p(PSTR("    REALLY ERASE    "));
+					lcd_gotoxy(0,2);
+					lcd_puts_p(PSTR("    EVERYTHING?     "));
+					drawSoftKeys_p(PSTR(""), PSTR("YES!"), PSTR(""), PSTR("CNCL"));
+				}
+				screenState = SCREEN_CONF_RESET_IDLE;
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+
+			case SCREEN_CONF_RESET_IDLE:
+				if (SOFTKEY_1 & buttonsPressed)
+				{
+					if (confSaveVar > 0)
+						confSaveVar--;
+					screenState = SCREEN_CONF_RESET_DRAW;
+				}
+				else if (SOFTKEY_2 & buttonsPressed)
+				{
+					if (confSaveVar == 0)
+					{
+						lcd_clrscr();
+						lcd_gotoxy(0,0);
+						lcd_puts_p(PSTR("RESETTING..."));
+						lcd_gotoxy(0,1);
+						lcd_puts_p(PSTR("EEPROM... "));
+						firstTimeInitConfig();
+						lcd_puts_p(PSTR("done"));
+						lcd_gotoxy(0,2);
+						lcd_puts_p(PSTR("Reboot"));
+						while(1); // Just stall and wait for a WDT reset
+					}
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					lcd_clrscr();
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				// Buttons handled, clear
+				buttonsPressed = 0;	
+				break;
+				
+				
 
 			case SCREEN_CONF_PKTINT_SETUP:
 				tempVar16 = min(9999, max(updateXmitInterval, 1));
