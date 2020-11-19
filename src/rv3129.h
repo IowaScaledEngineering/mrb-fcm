@@ -21,6 +21,8 @@ void rv3129_writeControl(void);
 void rv3129_writeDate(TimeData* dt);
 void rv3129_writeTime(TimeData* dt);
 void rv3129_readTime(TimeData* dt);
+void rv3129_writeFastTime(TimeData* dt);
+bool rv3129_readFastTime(TimeData* dt);
 
 #endif
 
