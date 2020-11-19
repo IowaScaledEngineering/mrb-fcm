@@ -246,22 +246,33 @@ void FlashToFastTimeStart(TimeData* t, uint8_t whichStart)
 	}
 }
 
-uint8_t debounce(uint8_t raw_inputs)
+typedef struct
 {
-	static uint8_t clock_A=0, clock_B=0, debounced_state=0;
-	uint8_t delta = raw_inputs ^ debounced_state;   //Find all of the changes
-	uint8_t changes;
+	uint16_t clock_A;
+	uint16_t clock_B;
+	uint16_t debounced_state;
+} DebounceState;
 
-	clock_A ^= clock_B;                     //Increment the counters
-	clock_B  = ~clock_B;
+void initDebounceState(DebounceState* d, uint16_t initialState)
+{
+	d->clock_A = d->clock_B = 0;
+	d->debounced_state = initialState;
+}
 
-	clock_A &= delta;                       //Reset the counters if no changes
-	clock_B &= delta;                       //were detected.
+uint16_t debounce(uint16_t raw_inputs, DebounceState* d)
+{
+	uint16_t delta = raw_inputs ^ d->debounced_state;   //Find all of the changes
+	uint16_t changes;
 
-	changes = ~((~delta) | clock_A | clock_B);
-	debounced_state ^= changes;
-	debounced_state &= 0x0F;
-	return(changes & ~(debounced_state));
+	d->clock_A ^= d->clock_B;                     //Increment the counters
+	d->clock_B  = ~d->clock_B;
+
+	d->clock_A &= delta;                       //Reset the counters if no changes
+	d->clock_B &= delta;                       //were detected.
+
+	changes = ~((~delta) | d->clock_A | d->clock_B);
+	d->debounced_state ^= changes;
+	return(changes & ~(d->debounced_state));
 }
 
 const char* monthNames[13] = { "Unk", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
@@ -347,10 +358,19 @@ typedef enum
 
 } ScreenState;
 
-#define SOFTKEY_1 0x01
-#define SOFTKEY_2 0x02
-#define SOFTKEY_3 0x04
-#define SOFTKEY_4 0x08
+#define SOFTKEY_1      0x0001
+#define SOFTKEY_2      0x0002
+#define SOFTKEY_3      0x0004
+#define SOFTKEY_4      0x0008
+#define SOFTKEY_1_LONG 0x0010
+#define SOFTKEY_2_LONG 0x0020
+#define SOFTKEY_3_LONG 0x0040
+#define SOFTKEY_4_LONG 0x0080
+
+
+#define EXT_KEY_1 0x0100
+#define EXT_KEY_2 0x0020
+
 
 typedef struct
 {
@@ -576,15 +596,24 @@ void lcd_backlightOff()
 
 #define PANEL_SWITCH_MASK (_BV(PC2) | _BV(PC3) | _BV(PC4) | _BV(PC5))
 
+#define EXT_SWITCH_MASK (_BV(PA3) | _BV(PA4))
+
 void initializeSwitches(void)
 {
 	DDRC &= ~(PANEL_SWITCH_MASK);  // Make inputs
 	PORTC |= (PANEL_SWITCH_MASK);  // Turn on pull-ups
+	
+	DDRA &= ~(EXT_SWITCH_MASK);
+	PORTA |= EXT_SWITCH_MASK;
+	
 }
 
 uint8_t readSwitches()
 {
-	return (PINC & PANEL_SWITCH_MASK)>>2;
+	uint8_t switchStates = (PINC & PANEL_SWITCH_MASK)>>2;
+	switchStates |= (PINA & EXT_SWITCH_MASK)<< 1;
+	return switchStates;
+	
 }
 
 void init(void)
@@ -874,12 +903,14 @@ int main(void)
 	uint8_t sdMountCode = 42;
 	uint8_t sdMountRetries = 0;
 	uint8_t sdFileOpenCode = 42;
-//	uint32_t loop = 0;
+	uint8_t buttonLongPressCounters[4] = {3,3,3,3};
 	ScreenState screenState = SCREEN_MAIN_DRAW;
 	FATFS FatFs;
+	DebounceState d;
+	
 	// Application initialization
 	init();
-
+	initDebounceState(&d, 0xFFFF);
 
 	// Initialize MRBus core
 #ifdef MRBEE
@@ -916,11 +947,48 @@ int main(void)
 		if (status & STATUS_READ_INPUTS)
 		{
 			status &= ~(STATUS_READ_INPUTS);
-			buttonsPressed = debounce(readSwitches());
+			buttonsPressed = debounce(readSwitches(), &d);
+			
+			for(uint8_t btn=0; btn<4; btn++)
+			{
+				if (buttonsPressed & (1<<btn))
+					buttonLongPressCounters[btn] = 25; // On initial press, we set a 0.5s delay before rapid
+
+				if (d.debounced_state & (1<<btn))
+					buttonLongPressCounters[btn] = 25; // Long delay if the button is up, too
+				else
+				{
+					// Button is down
+					if (buttonLongPressCounters[btn])
+						buttonLongPressCounters[btn]--;
+					else
+					{
+						buttonsPressed |= (1<<(btn+4));
+						buttonLongPressCounters[btn] = 5; // Repeat time
+					}
+				}
+			}
 		}
 
 		if (status & STATUS_SEND_DMX)
 		{
+			// Calculate DMX conditions here
+			if (!(d.debounced_state & EXT_KEY_1))
+			{
+				dmx_setChannel(1, 255);
+				dmx_setChannel(2, 255);
+			} else {
+				dmx_setChannel(1, 0);
+				dmx_setChannel(2, 0);
+			}
+			
+			if (!(d.debounced_state & EXT_KEY_2))
+			{
+				dmx_setChannel(3, 255);
+			} else {
+				dmx_setChannel(3, 0);
+			}
+			
 			dmx_startXmit();
 			status &= ~(STATUS_SEND_DMX);
 		}
@@ -1147,13 +1215,13 @@ int main(void)
 				
 			case SCREEN_CONF_MENU_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					if (configMenuOption > 0)
 						configMenuOption--;
 					screenState = SCREEN_CONF_MENU_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					if (configMenuOption < NUM_CONF_OPTIONS-1)
 						configMenuOption++;
@@ -1350,7 +1418,7 @@ int main(void)
 				
 			case SCREEN_CONF_FRATIO_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1367,7 +1435,7 @@ int main(void)
 					}
 					screenState = SCREEN_CONF_FRATIO_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1445,10 +1513,10 @@ int main(void)
 				printDec2Dig(tempTime.day);
 				lcd_putc(' ');
 				lcd_puts(monthNames[tempTime.month]);
-				lcd_puts(" 20");
+				lcd_puts_p(PSTR(" 20"));
 				printDec2DigWZero(tempTime.year % 100);
 				lcd_gotoxy(0,2);
-				lcd_puts("            ");
+				lcd_puts_p(PSTR("            "));
 				switch(confSaveVar)
 				{
 					case 0: // Day
@@ -1491,7 +1559,7 @@ int main(void)
 
 			case SCREEN_CONF_RDATE_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1520,7 +1588,7 @@ int main(void)
 					}
 					screenState = SCREEN_CONF_RDATE_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1617,6 +1685,7 @@ int main(void)
 				}
 				else
 					printDec2DigWZero(tempTime.hours);
+					
 				lcd_putc(':');
 				printDec2DigWZero(tempTime.minutes);
 				lcd_putc(':');
@@ -1640,7 +1709,7 @@ int main(void)
 
 			case SCREEN_CONF_RTIME_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1659,7 +1728,7 @@ int main(void)
 					}
 					screenState = SCREEN_CONF_RTIME_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1788,7 +1857,7 @@ int main(void)
 
 			case SCREEN_CONF_FSTART_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1807,7 +1876,7 @@ int main(void)
 					}
 					screenState = SCREEN_CONF_FSTART_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1937,7 +2006,7 @@ int main(void)
 				break;
 
 			case SCREEN_CONF_PKTINT_IDLE:
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -1968,7 +2037,7 @@ int main(void)
 					}
 					screenState = SCREEN_CONF_PKTINT_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -2069,7 +2138,7 @@ int main(void)
 
 			case SCREEN_CONF_ADDR_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					if (0 == confSaveVar)
 						tempVar += 0x10;
@@ -2083,7 +2152,7 @@ int main(void)
 
 					screenState = SCREEN_CONF_ADDR_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					if (0 == confSaveVar)
 						tempVar -= 0x10;
@@ -2142,7 +2211,7 @@ int main(void)
 				lcd_gotoxy(0,1);
 				lcd_puts_p(PSTR("[ ] Degrees F"));
 				lcd_gotoxy(0,2);
-				lcd_puts(PSTR("[ ] Degrees C"));
+				lcd_puts_p(PSTR("[ ] Degrees C"));
 				lcd_gotoxy(1, (confSaveVar)?1:2);
 				lcd_putc('*');
 				screenState = SCREEN_CONF_TEMPU_IDLE;
@@ -2199,10 +2268,10 @@ int main(void)
 					lcd_gotoxy(0, 1);
 					lcd_puts("0x");
 					printHex(tempVar);
-					lcd_puts("   ");
+					lcd_puts_p(PSTR("   "));
 				}
 				lcd_gotoxy(0,2);
-				lcd_puts("            ");
+				lcd_puts_p(PSTR("            "));
 
 				lcd_gotoxy(2 + confSaveVar, 2);
 				lcd_putc('^');
@@ -2213,7 +2282,7 @@ int main(void)
 
 			case SCREEN_CONF_THADDR_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					if (0 == confSaveVar)
 						tempVar += 0x10;
@@ -2225,7 +2294,7 @@ int main(void)
 
 					screenState = SCREEN_CONF_THADDR_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					if (0 == confSaveVar)
 						tempVar -= 0x10;
@@ -2296,7 +2365,7 @@ int main(void)
 				
 			case SCREEN_CONF_THTIMEOUT_IDLE:
 				// Switchy goodness
-				if (SOFTKEY_1 & buttonsPressed)
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{
@@ -2328,7 +2397,7 @@ int main(void)
 					}
 					screenState = SCREEN_CONF_THTIMEOUT_DRAW;
 				}
-				else if (SOFTKEY_2 & buttonsPressed)
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
 				{
 					switch(confSaveVar)
 					{

@@ -26,13 +26,18 @@ void dmx_initialize()
 	UCSR1B = 0;
 	UCSR1C = _BV(USBS1) | _BV(UCSZ11) | _BV(UCSZ10); // 8 data bits, 2 stop bit
 
-	memset(&dmx_channels, 0xFF, MAX_DMX_CHANNELS);
-	//dmx_channels[0] = 0;
-	dmx_channels[1] = 0;
+	memset(&dmx_channels, 0, MAX_DMX_CHANNELS);
 	dmx_TxIndex = 0;
 }
 
 #undef BAUD
+
+bool dmx_isSending()
+{
+	if (UCSR1B & _BV(UDRIE1))
+		return true; // Still running the last one
+	return false;
+}
 
 ISR(USART1_UDRE_vect)
 {
@@ -46,6 +51,13 @@ ISR(USART1_UDRE_vect)
 	}
 }
 
+void dmx_setChannel(uint16_t chanNum, uint8_t level)
+{
+	if (chanNum >= MAX_DMX_CHANNELS || chanNum == 0)
+		return;
+	dmx_channels[chanNum-1] = level;
+}
+
 void dmx_all_off(void)
 {
 	memset(&dmx_channels, 0, MAX_DMX_CHANNELS);
@@ -53,8 +65,8 @@ void dmx_all_off(void)
 
 void dmx_startXmit()
 {
-	if (UCSR1B & _BV(UDRIE1))
-		return; // Still running the last one
+	if(dmx_isSending())
+		return;
 
 	PORTD |= _BV(PD3);
 	DDRD |= _BV(PD3);
