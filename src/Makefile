@@ -53,14 +53,14 @@ MRBEE_PINS =
 #DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 $(MRBEE_DEFINES) $(MRBEE_PINS)
 
 # Wireless MRBee
-#DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 $(MRBEE_DEFINES) $(MRBEE_PINS)
-#SRCS = $(BASE_NAME).c dmx.c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
-#INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h dmx.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
+DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 -DSWREV_MAJOR=2 -DSWREV_MINOR=0 -DMRBEE -DMRBEE_IGNORE_FLOW $(MRBEE_PINS)
+SRCS = $(BASE_NAME).c dmx.c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbee-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
+INCS = $(MRBUS_LIB)/mrbee.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbee-avr.h dmx.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
 
 # Wired MRBus
-DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 -DMRBUS=1
-SRCS = $(BASE_NAME).c dmx.c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbus-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
-INCS = $(MRBUS_LIB)/mrbus.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbus-avr.h dmx.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
+#DEFINES := -DGIT_REV=0x$(GITREV)L -DENABLE_WATCHDOG -DHWREV_MAJOR=2 -DHWREV_MINOR=1 -DMRBUS=1 -DMRBUS_TXE=6
+#SRCS = $(BASE_NAME).c dmx.c lcd.c rv3129.c $(I2C_LIB)/avr-i2c-master.c $(MRBUS_LIB)/mrbus-avr.c $(MRBUS_LIB)/mrbus-crc.c $(MRBUS_LIB)/mrbus-queue.c $(SD_LIB)/diskio.c $(SD_LIB)/ff.c $(SD_LIB)/ffsystem.c $(SD_LIB)/mmc-avr.c
+#INCS = $(MRBUS_LIB)/mrbus.h $(I2C_LIB)/avr-i2c-master.h $(MRBUS_LIB)/mrbus-avr.h dmx.h lcd.h rv3129.h $(SD_LIB)/diskio.h $(SD_LIB)/ff.h $(SD_LIB)/ffconf.h $(SD_LIB)/mmc-avr.h $(SD_LIB)/ffconf.h
 
 CFILES    = $(filter %.c, $(SRCS))
 EXTC     := $(foreach dir, $(EXT), $(wildcard $(dir)/*.c))

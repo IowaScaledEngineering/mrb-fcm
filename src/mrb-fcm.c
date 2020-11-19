@@ -384,8 +384,12 @@ typedef enum
 #define SOFTKEY_4_LONG 0x0080
 
 
-#define EXT_KEY_1 0x0100
-#define EXT_KEY_2 0x0020
+#define EXT_KEY_1     0x0100
+#define EXT_KEY_2     0x0200
+#define EXT_AUX_IO1   0x0400
+#define EXT_AUX_IO2   0x0800
+#define EXT_SDDET     0x1000
+
 
 
 typedef struct
@@ -603,9 +607,9 @@ void initializeSD()
 	
 }
 
-bool sd_isInserted()
+bool sd_isInserted(uint16_t switches)
 {
-	return (PIND & _BV(SDCARD_INSERTED_PIN))?false:true;
+	return (switches & EXT_SDDET)?false:true;
 }
 
 
@@ -634,13 +638,23 @@ void initializeSwitches(void)
 	
 	DDRA &= ~(EXT_SWITCH_MASK);
 	PORTA |= EXT_SWITCH_MASK;
-	
+
+	DDRA &= ~(_BV(PA7)); // Make AUX_IO2 an input
+	PORTA |= _BV(PA7); // turn on pullup for AUX_IO2
+
+	DDRD &= ~(_BV(PD4)); // Make AUX_IO1 an input
+	PORTD |= _BV(PD4); // turn on pull-up
+
 }
 
-uint8_t readSwitches()
+uint16_t readSwitches()
 {
-	uint8_t switchStates = (PINC & PANEL_SWITCH_MASK)>>2;
-	switchStates |= (PINA & EXT_SWITCH_MASK)<< 1;
+	uint16_t switchStates = (PINC & PANEL_SWITCH_MASK)>>2;
+	switchStates |= (PINA & _BV(PA3))?EXT_KEY_1:0;
+	switchStates |= (PINA & _BV(PA4))?EXT_KEY_2:0;
+	switchStates |= (PIND & _BV(PD4))?EXT_AUX_IO1:0;
+	switchStates |= (PINA & _BV(PA7))?EXT_AUX_IO2:0;
+	switchStates |= (PIND & _BV(SDCARD_INSERTED_PIN))?EXT_SDDET:0;
 	return switchStates;
 	
 }
@@ -751,7 +765,7 @@ void drawSplashScreen()
 	lcd_gotoxy(0,0);
 	lcd_puts_p(PSTR("     PaceSetter"));
 	lcd_gotoxy(0,1);
-	lcd_puts_p(PSTR("   Fast Clock v2.0  "));
+	lcd_puts_p(PSTR(" Fast Clock System"));
 	lcd_gotoxy(0,2);
 	lcd_puts_p(PSTR("Iowa Scaled Eng 2020"));
 	lcd_gotoxy(0,3);
@@ -916,14 +930,15 @@ int main(void)
 	uint8_t tempVar = 0;
 	uint16_t tempVar16 = 0;
 	uint16_t kloopsPerSec=0;
+	char screenLineBuffer[21];
+	uint8_t buttonLongPressCounters[4] = {3,3,3,3};
+	DebounceState d;
+	ScreenState screenState = SCREEN_MAIN_DRAW;
+
 	bool mounted = false;
 	uint8_t sdMountCode = 42;
 	uint8_t sdMountRetries = 0;
-	uint8_t sdFileOpenCode = 42;
-	uint8_t buttonLongPressCounters[4] = {3,3,3,3};
-	ScreenState screenState = SCREEN_MAIN_DRAW;
 	FATFS FatFs;
-	DebounceState d;
 	
 	// Application initialization
 	init();
@@ -1012,7 +1027,7 @@ int main(void)
 
 		// Check SD card - try to mount if we're not mounted already
 		// If the card is ejected, reset mounted status
-		if (!sd_isInserted())
+		if (!sd_isInserted(d.debounced_state))
 		{
 			mounted = false;
 			sdMountCode = 42;
@@ -1107,14 +1122,14 @@ int main(void)
 //					drawLittleTime(&realTime, status & STATUS_REAL_AMPM);
 				}
 
-				lcd_gotoxy(18,0);
+				lcd_gotoxy(19,0);
 				if (mounted)
 				{
-					//lcd_putc('M');
-					printDec2Dig(sdFileOpenCode);
+					lcd_putc('M');
+					//printDec2Dig(sdFileOpenCode);
 				}
 				else
-					lcd_putc(sd_isInserted()?'S':' ');
+					lcd_putc(sd_isInserted(d.debounced_state)?'S':' ');
 				screenState = SCREEN_MAIN_IDLE;
 				break;
 
@@ -1958,12 +1973,52 @@ int main(void)
 				buttonsPressed = 0;	
 				break;
 
-			case SCREEN_CONF_DIAG_SETUP:
-				lcd_gotoxy(0,0);
-				lcd_puts_p(PSTR("Diagnostics"));
+//  Diagnostic Screen
+//  00000000001111111111
+//  01234567890123456789
+// [DIAGS 0xAA TTTC xxkl]
+// [TH:0xAA 0.0V [-----]]
+// [TH:None      [-----]]
+// [XXXXXX vx.y LR IR IL]
+// [PHSA PHSB      BACK ]
+// F:n - n=Y/N for faulted
 
-				lcd_gotoxy(0,2);
-				if (0 != thTimeout && 0 != thSourceAddr)
+			case SCREEN_CONF_DIAG_SETUP:
+				{
+					int8_t tempC = rv3129_readTemperature();
+					
+					if (status & STATUS_TEMP_DEG_F)
+						tempC = (int8_t)(((int16_t)tempC) * 9 / 5 + 32);
+					
+					snprintf(screenLineBuffer, sizeof(screenLineBuffer), "DIAG 0x%02X %3d%c %3ukl", mrbus_dev_addr, tempC, (status & STATUS_TEMP_DEG_F)?'F':'C', min(999,kloopsPerSec));
+					lcd_gotoxy(0,0);
+					lcd_puts(screenLineBuffer);
+
+					if (0 != thTimeout && 0 != thSourceAddr)
+						snprintf(screenLineBuffer, sizeof(screenLineBuffer), "TH:0x%02X %1d.%1dV [%c%c%c%c%c]", thSourceAddr, thVoltage/10, thVoltage % 10,
+							(d.debounced_state & EXT_KEY_1)?'-':'1',
+							(d.debounced_state & EXT_KEY_2)?'-':'2', 
+							(d.debounced_state & EXT_AUX_IO1)?'-':'A', 
+							(d.debounced_state & EXT_AUX_IO2)?'-':'B',
+							(d.debounced_state & EXT_SDDET)?'-':'C');
+					else
+						snprintf(screenLineBuffer, sizeof(screenLineBuffer), "TH:None      [%c%c%c%c%c]",
+							(d.debounced_state & EXT_KEY_1)?'-':'1',
+							(d.debounced_state & EXT_KEY_2)?'-':'2', 
+							(d.debounced_state & EXT_AUX_IO1)?'-':'A', 
+							(d.debounced_state & EXT_AUX_IO2)?'-':'B',
+							(d.debounced_state & EXT_SDDET)?'-':'C');
+					lcd_gotoxy(0,1);
+					lcd_puts(screenLineBuffer);
+					
+					
+					snprintf(screenLineBuffer, sizeof(screenLineBuffer), "%06lX v%d.%d", GIT_REV, SWREV_MAJOR, SWREV_MINOR);
+					lcd_gotoxy(0,2);
+					lcd_puts(screenLineBuffer);
+				}
+				
+				
+/*				if (0 != thTimeout && 0 != thSourceAddr)
 				{
 
 					lcd_puts_p(PSTR("TH :"));
@@ -1976,28 +2031,26 @@ int main(void)
 					lcd_puts("         ");
 			
 				
-				lcd_gotoxy(11,1);
-				lcd_puts_p(PSTR("Addr:0x"));
-				printHex(mrbus_dev_addr);
+				{
+					int8_t tempC = rv3129_readTemperature();
+					snprintf(screenLineBuffer, sizeof(screenLineBuffer), "%3.3dC", tempC);
+					lcd_gotoxy(0, 2);
+					lcd_puts(screenLineBuffer);
+				}*/
 				
-				lcd_gotoxy(12,0);
-				printDec4Dig(kloopsPerSec);
-				lcd_puts("kl/s");
-				
-				drawSoftKeys_p(PSTR("RFSH"),  PSTR(""), PSTR(""), PSTR("BACK"));
+				drawSoftKeys_p(PSTR(""),  PSTR(""), PSTR(""), PSTR("BACK"));
 				screenState = SCREEN_CONF_DIAG_IDLE;
 				break;
 
 			case SCREEN_CONF_DIAG_IDLE:
-				if (SOFTKEY_1 & buttonsPressed)
-				{
-					screenState = SCREEN_CONF_DIAG_SETUP;
-				}
-				else if (SOFTKEY_4 & buttonsPressed)
+				if (SOFTKEY_4 & buttonsPressed)
 				{
 					screenState = SCREEN_CONF_MENU_DRAW;
 				}
 				buttonsPressed = 0;
+
+				// 1-sec refreshes are handled in the main loop as a special case
+
 				break;
 				
 //  Factory Reset Screen
