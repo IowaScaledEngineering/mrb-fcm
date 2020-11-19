@@ -3205,6 +3205,7 @@ Layer(5 "top silk" "silk")
 	Text[760.00mil 2335.00mil 0 100 "Qwiic" "clearline"]
 	Text[765.00mil 2400.00mil 0 100 "I2C" "clearline"]
 	Text[3030.00mil 2305.00mil 0 100 "CR1220 COIN CELL" "clearline"]
+	Text[740.00mil 130.00mil 0 100 "*" "clearline"]
 	Polygon("clearpoly")
 	(
 		[25.5379mm 52.0169mm] [25.4373mm 2045.20mil] [25.4028mm 51.8351mm] [25.4165mm 51.7550mm] [25.4663mm 2035.10mil] 
