@@ -61,27 +61,23 @@ MRBusPacket mrbusTxPktBufferArray[MRBUS_TX_BUFFER_DEPTH];
 MRBusPacket mrbusRxPktBufferArray[MRBUS_RX_BUFFER_DEPTH];
 
 uint8_t mrbus_dev_addr = 0;
-
 uint8_t thSourceAddr = 0;
 uint16_t thTimeoutReset = 600;
 uint16_t thTimeout = 0;
 
-// ******** Start 100 Hz Timer - Very Accurate Version
-
-// Initialize a 100Hz timer for use in triggering events.
-// If you need the timer resources back, you can remove this, but I find it
-// rather handy in triggering things like periodic status transmissions.
-// If you do remove it, be sure to yank the interrupt handler and ticks/secs as well
-// and the call to this function in the main function
-
-volatile uint8_t ticks;
 volatile uint16_t decisecs=0;
-volatile uint16_t updateXmitInterval=20;
-volatile uint16_t screenUpdateDecisecs=0;
 volatile uint16_t fastDecisecs=0;
-volatile uint8_t scaleTenthsAccum = 0;
+
+uint16_t updateXmitInterval=20;
 uint16_t scaleFactor = 10;
+
 volatile uint8_t status=0;
+volatile uint8_t events=0;
+
+
+#define EVENT_READ_INPUTS   0x01
+#define EVENT_UPDATE_SCREEN 0x02
+#define EVENT_SEND_DMX      0x80
 
 uint16_t kelvinTemp = 0;
 uint8_t relHumidity = 0;
@@ -90,14 +86,13 @@ uint8_t thAlternator = 0;
 
 #define TH_ALTERNATOR_MAX 8
 
-#define STATUS_READ_INPUTS 0x01
-#define STATUS_FAST_ACTIVE 0x02
-#define STATUS_FAST_AMPM   0x04
-#define STATUS_REAL_AMPM   0x08
+#define STATUS_FAST_ACTIVE  0x02
+#define STATUS_FAST_AMPM    0x04
+#define STATUS_REAL_AMPM    0x08
 #define STATUS_FAST_HOLDING 0x10 // This hold flag indicates we're actually in hold
-#define STATUS_FAST_HOLD   0x20  // This flag indicates that we start going into fast in hold
-#define STATUS_TEMP_DEG_F  0x40
-#define STATUS_SEND_DMX    0x80
+#define STATUS_FAST_HOLD    0x20  // This flag indicates that we start going into fast in hold
+#define STATUS_TEMP_DEG_F   0x40
+
 
 #define TIME_FLAGS_DISP_FAST       0x01
 #define TIME_FLAGS_DISP_FAST_HOLD  0x02
@@ -402,6 +397,13 @@ const ConfigurationOption configurationOptions[] =
 
 #define isLeapYear(y)  (0 == ((y) % 4))
 
+// ******** Start 100 Hz Timer - Very Accurate Version
+
+// Initialize a 100Hz timer for use in triggering events.
+// If you need the timer resources back, you can remove this, but I find it
+// rather handy in triggering things like periodic status transmissions.
+// If you do remove it, be sure to yank the interrupt handler and ticks/secs as well
+// and the call to this function in the main function
 
 void initialize100HzTimer(void)
 {
@@ -414,22 +416,28 @@ void initialize100HzTimer(void)
 	TIFR3 |= _BV(OCF3A);
 	TIMSK3 |= _BV(OCIE3A);
 	
-	ticks = 0;
 	decisecs = 0;
 	fastDecisecs = 0;
-	scaleTenthsAccum = 0;
-	screenUpdateDecisecs = 0;
 }
 
 ISR(TIMER3_COMPA_vect)
 {
 	static uint8_t ticks = 0;
+	static uint8_t screenUpdateTicks = 0;
+	static uint8_t scaleTenthsAccum = 0;
+	
 	if (ticks & 0x01)
-		status |= STATUS_READ_INPUTS;
+		events |= EVENT_READ_INPUTS;
+
+	if (++screenUpdateTicks >= 100)
+	{
+		events |= EVENT_UPDATE_SCREEN;
+		screenUpdateTicks = 0;
+	}
 
 	if (++ticks >= 10)
 	{
-		status |= STATUS_SEND_DMX;
+		events |= EVENT_SEND_DMX;
 
 		ticks = 0;
 		if (STATUS_FAST_ACTIVE == (status & (STATUS_FAST_ACTIVE | STATUS_FAST_HOLDING)))
@@ -444,7 +452,6 @@ ISR(TIMER3_COMPA_vect)
 			
 		}
 		decisecs++;
-		screenUpdateDecisecs++;
 	}
 	mmc_disk_timerproc();
 }
@@ -638,6 +645,15 @@ void init(void)
 	// Set up tick timer
 	initialize100HzTimer();
 
+	// Because scale factor is used in the interrupt, read it up front
+	scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
+	if (scaleFactor < 10 || scaleFactor > 999)
+	{
+		scaleFactor = 10;
+		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, scaleFactor & 0xFF);
+		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (scaleFactor>>8));
+	}
+
 	// Enable interrupts
 	sei();
 
@@ -652,14 +668,6 @@ void init(void)
 	
 	status = eeprom_read_byte((uint8_t*)EE_ADDR_CONF_FLAGS);
 	
-	scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
-	if (scaleFactor < 10 || scaleFactor > 999)
-	{
-		scaleFactor = 10;
-		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, scaleFactor & 0xFF);
-		eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (scaleFactor>>8));
-	}	
-
 	thSourceAddr = eeprom_read_byte((uint8_t*)EE_ADDR_TH_SRC_ADDR);
 	if(0xFF == thSourceAddr)
 		thSourceAddr = 0;
@@ -667,7 +675,6 @@ void init(void)
 
 	thTimeoutReset = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L) 
 			| (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H)) << 8);
-
 
 	if (thTimeoutReset < 10 || thTimeoutReset > 9999)
 	{
@@ -944,9 +951,9 @@ int main(void)
 			PktHandler();
 		}
 
-		if (status & STATUS_READ_INPUTS)
+		if (events & EVENT_READ_INPUTS)
 		{
-			status &= ~(STATUS_READ_INPUTS);
+			events &= ~(EVENT_READ_INPUTS);
 			buttonsPressed = debounce(readSwitches(), &d);
 			
 			for(uint8_t btn=0; btn<4; btn++)
@@ -970,8 +977,9 @@ int main(void)
 			}
 		}
 
-		if (status & STATUS_SEND_DMX)
+		if (events & EVENT_SEND_DMX)
 		{
+			events &= ~(EVENT_SEND_DMX);
 			// Calculate DMX conditions here
 			if (!(d.debounced_state & EXT_KEY_1))
 			{
@@ -990,7 +998,6 @@ int main(void)
 			}
 			
 			dmx_startXmit();
-			status &= ~(STATUS_SEND_DMX);
 		}
 
 		// Check SD card - try to mount if we're not mounted already
@@ -1480,7 +1487,10 @@ int main(void)
 
 					eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, tempVar16 & 0xFF);
 					eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (tempVar16>>8));
-					scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
+					ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+					{
+						scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
+					}
 					screenState = SCREEN_CONF_MENU_DRAW;
 				}
 				else if (SOFTKEY_4 & buttonsPressed)
@@ -2479,19 +2489,22 @@ int main(void)
 				break;		
 		
 		}
-
-		if(FAST_MODE && !FASTHOLD_MODE && fastDecisecs >= 10)
-		{
-			uint8_t fastTimeSecs = fastDecisecs / 10;
-			incrementTime(&fastTime, fastTimeSecs);
-			fastDecisecs -= fastTimeSecs * 10;
-			if (screenState == SCREEN_MAIN_IDLE || screenState == SCREEN_MAIN_UPDATE_TIME)
-				screenState = SCREEN_MAIN_UPDATE_TIME;
-		}
 		
-
-		if (screenUpdateDecisecs >= 10)
+		ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
 		{
+			if(FAST_MODE && !FASTHOLD_MODE && fastDecisecs >= 10)
+			{
+				uint8_t fastTimeSecs = fastDecisecs / 10;
+				incrementTime(&fastTime, fastTimeSecs);
+				fastDecisecs -= fastTimeSecs * 10;
+				if (screenState == SCREEN_MAIN_IDLE || screenState == SCREEN_MAIN_UPDATE_TIME)
+					screenState = SCREEN_MAIN_UPDATE_TIME;
+			}
+		}
+
+		if (events & EVENT_UPDATE_SCREEN)
+		{
+			events &= ~(EVENT_UPDATE_SCREEN);
 			// Reading optimizer
 			// If we don't know the date or if we're in the range where we're at risk of 
 			// changing dates
@@ -2522,8 +2535,7 @@ int main(void)
 				default:
 					break;
 			}
-			
-			screenUpdateDecisecs -= 10;
+
 			kloopsPerSec = loopCount / 1000;
 			if(0 != thTimeout)
 				thTimeout--;
@@ -2535,12 +2547,14 @@ int main(void)
 		}		
 
 		/* If we need to send a packet and we're not already busy... */
-		if (decisecs >= updateXmitInterval)
+		ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
 		{
-			vitalChange = 1;
-			decisecs -= updateXmitInterval;
-		}			
-		
+			if (decisecs >= updateXmitInterval)
+			{
+				vitalChange = 1;
+				decisecs -= updateXmitInterval;
+			}
+		}
 		
 		if (vitalChange && !(mrbusPktQueueFull(&mrbusTxQueue)))
 		{
@@ -2564,14 +2578,14 @@ int main(void)
 			
 			txBuffer[MRBUS_PKT_SRC] = mrbus_dev_addr;
 			txBuffer[MRBUS_PKT_DEST] = 0xFF;
-			txBuffer[MRBUS_PKT_LEN] = 18;			
+			txBuffer[MRBUS_PKT_LEN] = 18;
 			txBuffer[5] = 'T';
 			txBuffer[6] = realTime.hours;
 			txBuffer[7] = realTime.minutes;
 			txBuffer[8] = realTime.seconds;
 			txBuffer[9] = flags;
 			txBuffer[10] = fastTime.hours;
-			txBuffer[11] = fastTime.minutes;			
+			txBuffer[11] = fastTime.minutes;
 			txBuffer[12] = fastTime.seconds;
 			txBuffer[13] = 0xFF & (scaleFactor>>8);
 			txBuffer[14] = 0xFF & scaleFactor;
