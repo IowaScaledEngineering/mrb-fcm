@@ -683,7 +683,7 @@ void init(void)
 
 	// Because scale factor is used in the interrupt, read it up front
 	scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
-	if (scaleFactor < 10 || scaleFactor > 999)
+	if (scaleFactor < 1 || scaleFactor > 999)
 		scaleFactor = 40;
 
 	// Enable interrupts
@@ -1472,8 +1472,9 @@ int main(void)
 					switch(confSaveVar)
 					{
 						case 0:
-							if ((tempVar16 / 10) > 1)
-								tempVar16 -= 10;
+							if ((tempVar16 / 10) >= 1)
+								tempVar16 = max(tempVar - min(tempVar, 10), 1);
+
 							break;
 						
 						case 1:
@@ -1507,15 +1508,12 @@ int main(void)
 				}
 				else if (SOFTKEY_3 & buttonsPressed)
 				{
-					if (tempVar16 < 10 || tempVar16 > 999)
-						tempVar16 = 10;
+					if (tempVar16 < 1 || tempVar16 > 999)
+						tempVar16 = 40;
 
 					eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, tempVar16 & 0xFF);
 					eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (tempVar16>>8));
-					ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-					{
-						scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
-					}
+					scaleFactor = (uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_L) + (((uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_FAST_RATIO_H))<<8);
 					screenState = SCREEN_CONF_MENU_DRAW;
 				}
 				else if (SOFTKEY_4 & buttonsPressed)
