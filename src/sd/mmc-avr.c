@@ -95,7 +95,7 @@ static void power_on(void)
 
 static void power_off(void)
 {
-	SPCR = 0;				/* Disable SPI function */
+	SPCR = 0x10;				/* Disable SPI function */
 }
 
 

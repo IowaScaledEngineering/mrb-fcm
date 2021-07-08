@@ -657,7 +657,7 @@ void lcd_backlightOn()
 void lcd_backlightOff()
 {
 	DDRB |= _BV(LCD_BACKLIGHT_PIN);
-	PORTB &= ~_BV(LCD_BACKLIGHT_PIN);
+	PORTB &= ~(_BV(LCD_BACKLIGHT_PIN));
 }
 
 #define PANEL_SWITCH_MASK (_BV(PC2) | _BV(PC3) | _BV(PC4) | _BV(PC5))
@@ -698,6 +698,10 @@ void init(void)
 	MCUSR = 0;
 	wdt_reset();
 	wdt_enable(WDTO_1S);
+
+	// This must be set before the SD card stuff comes on, otherwise
+	// if PB4 is seen as an input it can mess with master mode
+	DDRB |= _BV(LCD_BACKLIGHT_PIN);
 
 	initializeSwitches();
 	initializeSD();
