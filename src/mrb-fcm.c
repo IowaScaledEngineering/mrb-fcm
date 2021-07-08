@@ -35,6 +35,7 @@ LICENSE:
 #include <util/delay.h>
 #include <util/atomic.h>
 
+#include "float16.h"
 #include "lcd.h"
 #include "avr-i2c-master.h"
 #include "rv3129.h"
@@ -79,7 +80,7 @@ volatile uint8_t events=0;
 #define EVENT_UPDATE_SCREEN 0x02
 #define EVENT_SEND_DMX      0x80
 
-uint16_t kelvinTemp = 0;
+float celsiusTemp = 0;
 uint8_t relHumidity = 0;
 uint8_t thVoltage = 0;
 uint8_t thAlternator = 0;
@@ -141,7 +142,7 @@ void writeDefaultEEPROMConfig()
 {
 	uint16_t u16 = 40;
 
-	eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR, 0x03);
+	eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_ADDR, 0x10);
 
 	u16 = 20;
 	eeprom_write_byte((uint8_t*)MRBUS_EE_DEVICE_UPDATE_L, u16 & 0xFF);
@@ -164,7 +165,6 @@ void writeDefaultEEPROMConfig()
 	u16 = 40;
 	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_L, u16 & 0xFF);
 	eeprom_write_byte((uint8_t*)EE_ADDR_FAST_RATIO_H, 0xFF & (u16>>8));
-
 
 	eeprom_write_byte((uint8_t*)(EE_ADDR_TH_SRC_ADDR), 0); // No TH by default
 	
@@ -410,7 +410,7 @@ const ConfigurationOption configurationOptions[] =
   { "Fast Start Time 2", SCREEN_CONF_FSTART2_SETUP },
   { "Fast Start Time 3", SCREEN_CONF_FSTART3_SETUP },    
   { "Time Pkt Interval", SCREEN_CONF_PKTINT_SETUP },
-  { "Node Address",   SCREEN_CONF_ADDR_SETUP },
+  { "Clock Address",   SCREEN_CONF_ADDR_SETUP },
   { "TH Address",     SCREEN_CONF_THADDR_SETUP },
   { "TH Timeout", SCREEN_CONF_THTIMEOUT_SETUP },
   { "Temperature Units", SCREEN_CONF_TEMPU_SETUP },
@@ -569,14 +569,22 @@ void PktHandler(void)
 		mrbusPktQueuePush(&mrbusTxQueue, txBuffer, txBuffer[MRBUS_PKT_LEN]);
 		goto PktIgnore;
 	}
-	else if ('S' == rxBuffer[MRBUS_PKT_TYPE] && thSourceAddr == rxBuffer[MRBUS_PKT_SRC] && rxBuffer[MRBUS_PKT_LEN] >= 11)
+	else if ('S' == rxBuffer[MRBUS_PKT_TYPE] && thSourceAddr == rxBuffer[MRBUS_PKT_SRC] && rxBuffer[MRBUS_PKT_LEN] >= 10)
 	{
 		// This might be a TH packet coming in
 		// P:FF 20 0B 60 7B 53 00 12 5B 3C 20
-		kelvinTemp = (((uint16_t)rxBuffer[7])<<8) + (uint16_t)rxBuffer[8];
-		relHumidity = rxBuffer[9];
+
+		// Format of v3 TH 
+		//  data[6-7] - Float16 format temperature
+		//  data[8] - Humidity (0-100)
+		//  data[9] - Battery voltage
+		
+		
+		uint16_t c16Temp = (((uint16_t)rxBuffer[6])<<8) + (uint16_t)rxBuffer[7];
+		celsiusTemp = F16toF32((float16_t)c16Temp);
+		relHumidity = rxBuffer[8];
+		thVoltage = rxBuffer[9];
 		thTimeout = thTimeoutReset;
-		thVoltage = rxBuffer[10];
 	}
 	//*************** END PACKET HANDLER  ***************
 
@@ -765,9 +773,9 @@ void drawSplashScreen()
 	lcd_gotoxy(0,0);
 	lcd_puts_p(PSTR("     PaceSetter"));
 	lcd_gotoxy(0,1);
-	lcd_puts_p(PSTR(" Fast Clock System"));
+	lcd_puts_p(PSTR(" Scale Clock System"));
 	lcd_gotoxy(0,2);
-	lcd_puts_p(PSTR("Iowa Scaled Eng 2020"));
+	lcd_puts_p(PSTR("Iowa Scaled Eng 2021"));
 	lcd_gotoxy(0,3);
 	lcd_puts_p(PSTR("  www.iascaled.com  "));
 	
@@ -831,9 +839,9 @@ void drawLittleTempHum()
 	uint8_t tempInUnits = 0;
 	
 	if (status & STATUS_TEMP_DEG_F)
-		tempInUnits = (uint8_t)( 32 + (((kelvinTemp - 4370) * 9) / (5 * 16)) );
+		tempInUnits = (uint8_t)(celsiusTemp * 9.0 / 5.0) + 32;
 	else
-		tempInUnits = 0xFF & ((kelvinTemp - 4370)>>4);
+		tempInUnits = (uint8_t)(celsiusTemp);
 	lcd_gotoxy(9,2);
 	//        01111111111
 	//        90123456789
@@ -845,7 +853,7 @@ void drawLittleTempHum()
 	lcd_putc(0xDF); // Degree symbol
 	lcd_putc((status & STATUS_TEMP_DEG_F)?'F':'C');
 	lcd_putc(' ');
-	printDec3Dig(relHumidity / 2);
+	printDec3Dig(relHumidity);
 	lcd_puts("%H");
 }
 
@@ -1473,13 +1481,13 @@ int main(void)
 					{
 						case 0:
 							if ((tempVar16 / 10) >= 1)
-								tempVar16 = max(tempVar - min(tempVar, 10), 1);
+								tempVar16 = max(tempVar16 - min(tempVar16, 10), 1);
 
 							break;
 						
 						case 1:
 							if ((tempVar16 % 10) > 0)
-								tempVar16--;
+								tempVar16 = max(tempVar16-1, 1);
 							break;
 					
 					}
@@ -2262,7 +2270,7 @@ int main(void)
 
 				confSaveVar = 0;
 				lcd_gotoxy(0,0);
-				lcd_puts_p(PSTR("Fast Clock Addr:"));
+				lcd_puts_p(PSTR("Master Clock Addr:"));
 
 				// Intentional fall-through
 
