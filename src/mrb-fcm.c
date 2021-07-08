@@ -66,6 +66,10 @@ uint8_t thSourceAddr = 0;
 uint16_t thTimeoutReset = 600;
 uint16_t thTimeout = 0;
 
+#define BACKLIGHT_ALWAYS_ON 0xFF
+uint8_t blTimeout = BACKLIGHT_ALWAYS_ON;
+uint8_t blTimeoutReset = BACKLIGHT_ALWAYS_ON;
+
 volatile uint16_t decisecs=0;
 volatile uint16_t fastDecisecs=0;
 
@@ -78,6 +82,7 @@ volatile uint8_t events=0;
 
 #define EVENT_READ_INPUTS   0x01
 #define EVENT_UPDATE_SCREEN 0x02
+#define EVENT_SECOND_TICK   0x04
 #define EVENT_SEND_DMX      0x80
 
 float celsiusTemp = 0;
@@ -121,12 +126,29 @@ uint8_t thAlternator = 0;
 #define EE_ADDR_FAST_START3_M   0x37
 #define EE_ADDR_FAST_START3_S   0x38
 
-#define EE_ADDR_FAST_RATIO_H   0x3A
-#define EE_ADDR_FAST_RATIO_L   0x3B
-#define EE_ADDR_TH_SRC_ADDR    0x3C
-#define EE_ADDR_TH_TIMEOUT_H   0x3D
-#define EE_ADDR_TH_TIMEOUT_L   0x3E
+#define EE_ADDR_FAST_RATIO_H    0x3A
+#define EE_ADDR_FAST_RATIO_L    0x3B
+#define EE_ADDR_TH_SRC_ADDR     0x3C
+#define EE_ADDR_TH_TIMEOUT_H    0x3D
+#define EE_ADDR_TH_TIMEOUT_L    0x3E
+#define EE_ADDR_BL_TIMEOUT      0x3F
 
+void setBacklightTimeout(uint8_t blTimeoutSeconds)
+{
+	eeprom_write_byte((uint8_t*)EE_ADDR_BL_TIMEOUT, blTimeoutSeconds);
+}
+
+uint8_t getBacklightTimeout()
+{
+	uint8_t tmpVal = 	(uint16_t)eeprom_read_byte((uint8_t*)EE_ADDR_BL_TIMEOUT);
+
+	if (tmpVal < 10)
+	{
+		tmpVal = 0xFF;
+		setBacklightTimeout(tmpVal);
+	}
+	return tmpVal;
+}
 
 uint32_t loopCount = 0;
 
@@ -172,6 +194,7 @@ void writeDefaultEEPROMConfig()
 	eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_L, u16 & 0xFF);
 	eeprom_write_byte((uint8_t*)EE_ADDR_TH_TIMEOUT_H, 0xFF & (u16>>8));
 
+	setBacklightTimeout(0xFF);
 }
 
 void firstTimeInitConfig()
@@ -351,7 +374,7 @@ typedef enum
 	SCREEN_CONF_THADDR_SETUP = 170,
 	SCREEN_CONF_THADDR_DRAW  = 171,
 	SCREEN_CONF_THADDR_IDLE  = 172,
-	SCREEN_CONF_THADDR_CONFIRM = 173,		
+	SCREEN_CONF_THADDR_CONFIRM = 173,
 	
 	SCREEN_CONF_TEMPU_SETUP = 176,
 	SCREEN_CONF_TEMPU_DRAW = 177,
@@ -360,7 +383,12 @@ typedef enum
 	SCREEN_CONF_THTIMEOUT_SETUP = 180,
 	SCREEN_CONF_THTIMEOUT_DRAW  = 181,
 	SCREEN_CONF_THTIMEOUT_IDLE  = 182,
-	SCREEN_CONF_THTIMEOUT_CONFIRM = 183,	
+	SCREEN_CONF_THTIMEOUT_CONFIRM = 183,
+
+	SCREEN_CONF_BACKLITE_SETUP = 235,
+	SCREEN_CONF_BACKLITE_DRAW  = 236,
+	SCREEN_CONF_BACKLITE_IDLE  = 237,
+	SCREEN_CONF_BACKLITE_OFF   = 238,
 
 	SCREEN_CONF_RESET_SETUP = 245,
 	SCREEN_CONF_RESET_DRAW  = 246,
@@ -414,6 +442,7 @@ const ConfigurationOption configurationOptions[] =
   { "TH Address",     SCREEN_CONF_THADDR_SETUP },
   { "TH Timeout", SCREEN_CONF_THTIMEOUT_SETUP },
   { "Temperature Units", SCREEN_CONF_TEMPU_SETUP },
+  { "Backlight Timeout",  SCREEN_CONF_BACKLITE_SETUP },
   { "Diagnostics",    SCREEN_CONF_DIAG_SETUP },
   { "Factory Reset",      SCREEN_CONF_RESET_SETUP },  
 };
@@ -457,7 +486,7 @@ ISR(TIMER3_COMPA_vect)
 
 	if (++screenUpdateTicks >= 100)
 	{
-		events |= EVENT_UPDATE_SCREEN;
+		events |= EVENT_UPDATE_SCREEN  | EVENT_SECOND_TICK;
 		screenUpdateTicks = 0;
 	}
 
@@ -571,14 +600,10 @@ void PktHandler(void)
 	}
 	else if ('S' == rxBuffer[MRBUS_PKT_TYPE] && thSourceAddr == rxBuffer[MRBUS_PKT_SRC] && rxBuffer[MRBUS_PKT_LEN] >= 10)
 	{
-		// This might be a TH packet coming in
-		// P:FF 20 0B 60 7B 53 00 12 5B 3C 20
-
 		// Format of v3 TH 
 		//  data[6-7] - Float16 format temperature
 		//  data[8] - Humidity (0-100)
 		//  data[9] - Battery voltage
-		
 		
 		uint16_t c16Temp = (((uint16_t)rxBuffer[6])<<8) + (uint16_t)rxBuffer[7];
 		celsiusTemp = F16toF32((float16_t)c16Temp);
@@ -732,7 +757,12 @@ void init(void)
 	// If the update interval is garbage, set it to 2 seconds
 	if (0xFFFF == updateXmitInterval)
 		updateXmitInterval = 20;
+		
+	blTimeout = blTimeoutReset = getBacklightTimeout();
+
 }
+
+
 
 void drawBigHold()
 {
@@ -928,7 +958,6 @@ void drawLittleTime(TimeData* t, uint8_t useAMPM)
 }
 
 
-
 int main(void)
 {
 	uint8_t buttonsPressed=0, colon=0;
@@ -942,7 +971,6 @@ int main(void)
 	uint8_t buttonLongPressCounters[4] = {3,3,3,3};
 	DebounceState d;
 	ScreenState screenState = SCREEN_MAIN_DRAW;
-
 	bool mounted = false;
 	uint8_t sdMountCode = 42;
 	uint8_t sdMountRetries = 0;
@@ -984,11 +1012,37 @@ int main(void)
 			PktHandler();
 		}
 
+		if (events & EVENT_SECOND_TICK)
+		{
+			events &= ~(EVENT_SECOND_TICK);
+			if (0 == blTimeout)
+			{
+				lcd_backlightOff();
+			}
+			else if (blTimeout != BACKLIGHT_ALWAYS_ON && blTimeout > 0)
+			{
+				blTimeout -= 1;
+			}
+		}
+
 		if (events & EVENT_READ_INPUTS)
 		{
 			events &= ~(EVENT_READ_INPUTS);
 			buttonsPressed = debounce(readSwitches(), &d);
-			
+
+			// If any button is pressed, reset backlight delay
+			if (buttonsPressed)
+			{
+				if (0 == blTimeout)
+				{
+					// If we're timed out and the backlight is off, eat the first keystroke
+					buttonsPressed &= 0xF0;
+					lcd_backlightOn();
+				}
+				blTimeout = blTimeoutReset;
+			}
+
+
 			for(uint8_t btn=0; btn<4; btn++)
 			{
 				if (buttonsPressed & (1<<btn))
@@ -1978,6 +2032,76 @@ int main(void)
 				// Buttons handled, clear
 				buttonsPressed = 0;	
 				break;
+
+
+//  Backlight Timeout Configuration
+//  00000000001111111111
+//  01234567890123456789
+// [Backlight Timeout   ]
+// [ Seconds: yyys      ]
+// [          ^         ]
+// [ +++  >>> SAVE CNCL ]
+// nnn = max speed %
+// yy.y = ramp time
+
+			case SCREEN_CONF_BACKLITE_SETUP:
+				lcd_clrscr();
+				lcd_puts_p(PSTR("Backlight Timeout"));
+				lcd_gotoxy(1, 1);
+				lcd_puts_p(PSTR("Seconds: "));
+				lcd_gotoxy(10, 2);
+				lcd_puts("^^^^");
+				tempVar = blTimeoutReset;
+				if (0xFF == tempVar)
+					tempVar = 0;  // For the purposes of the menu, 0 is don't turn the backlight off, not 0xFF
+
+				drawSoftKeys_p(PSTR(" ++ "), PSTR(" -- "), PSTR("SAVE"), PSTR("CNCL"));
+				screenState = SCREEN_CONF_BACKLITE_DRAW;
+				break;
+
+			case SCREEN_CONF_BACKLITE_DRAW:
+				lcd_gotoxy(10,1);
+				if (0 == tempVar)
+					snprintf(screenLineBuffer, sizeof(screenLineBuffer), "None");
+				else
+					snprintf(screenLineBuffer, sizeof(screenLineBuffer), "%03ds", tempVar);
+				lcd_puts(screenLineBuffer);
+				screenState = SCREEN_CONF_BACKLITE_IDLE;
+				break;
+
+			case SCREEN_CONF_BACKLITE_IDLE:
+				if ((SOFTKEY_1 | SOFTKEY_1_LONG) & buttonsPressed)
+				{
+					if (tempVar < 250)
+						tempVar += 10;
+					screenState = SCREEN_CONF_BACKLITE_DRAW;
+				}
+				else if ((SOFTKEY_2 | SOFTKEY_2_LONG) & buttonsPressed)
+				{
+					if (tempVar > 0)
+						tempVar -= 10;
+					screenState = SCREEN_CONF_BACKLITE_DRAW;
+				}
+				else if (SOFTKEY_3 & buttonsPressed)
+				{
+					// Put the functions back in their bitmasks
+					if (0 == tempVar)
+						tempVar = 0xFF;
+					setBacklightTimeout(tempVar);
+					blTimeout = blTimeoutReset = getBacklightTimeout();
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+				else if (SOFTKEY_4 & buttonsPressed)
+				{
+					// Cancel
+					lcd_clrscr();
+					screenState = SCREEN_CONF_MENU_DRAW;
+				}
+
+				// Buttons handled, clear
+				buttonsPressed = 0;
+				break;
+
 
 //  Diagnostic Screen
 //  00000000001111111111
