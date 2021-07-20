@@ -800,6 +800,7 @@ void drawBigTime(TimeData* t, uint8_t useAMPM)
 void drawSplashScreen()
 {
 	lcd_setup_bigdigits();
+	lcd_clrscr();
 	lcd_gotoxy(0,0);
 	//               00000000001111111111
 	//               01234567890123456789
@@ -1342,6 +1343,7 @@ int main(void)
 
 			case SCREEN_CONF_R1224_SETUP:
 				confSaveVar = (status & STATUS_REAL_AMPM);
+				lcd_clrscr();
 				lcd_gotoxy(0,0);
 				lcd_puts("Real Time 12/24H:");
 				drawSoftKeys_p(PSTR("12hr"),  PSTR("24hr"), PSTR("SAVE"), PSTR("CNCL"));
@@ -1388,6 +1390,7 @@ int main(void)
 
 			case SCREEN_CONF_F1224_SETUP:
 				confSaveVar = (status & STATUS_FAST_AMPM);
+				lcd_clrscr();
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Fast Time 12/24H:"));
 				drawSoftKeys_p(PSTR("12hr"),  PSTR("24hr"), PSTR("SAVE"), PSTR("CNCL"));
@@ -1434,6 +1437,7 @@ int main(void)
 
 			case SCREEN_CONF_FSHOLD_SETUP:
 				confSaveVar = status & STATUS_FAST_HOLD;
+				lcd_clrscr();
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Fast Start Mode"));
 				drawSoftKeys_p(PSTR("RUN"),  PSTR("HOLD"), PSTR("SAVE"), PSTR("CNCL"));
@@ -1602,6 +1606,7 @@ int main(void)
 					tempTime.year = 2012;
 				
 				confSaveVar = 0;
+				lcd_clrscr();
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Current Real Date:"));
 
@@ -1648,7 +1653,7 @@ int main(void)
 					lcd_gotoxy(15,1);
 					lcd_puts_p(dateError?PSTR("DATE"):PSTR("    "));
 					lcd_gotoxy(15,2);
-					lcd_puts(dateError?PSTR("ERR "):PSTR("    "));
+					lcd_puts_p(dateError?PSTR("ERR "):PSTR("    "));
 
 					drawSoftKeys_p(PSTR(" ++ "),  PSTR(" -- "), PSTR(" >> "), dateError?PSTR("    "):PSTR(" GO "));
 				}
@@ -1768,6 +1773,7 @@ int main(void)
 			case SCREEN_CONF_RTIME_SETUP:
 				memcpy(&tempTime, &realTime, sizeof(TimeData));
 				confSaveVar = 0;
+				lcd_clrscr();				
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Current Real Time:"));
 				// Intentional fall-through
@@ -1910,6 +1916,7 @@ int main(void)
 			case SCREEN_CONF_FSTART_COMMON_SETUP:
 				FlashToFastTimeStart(&tempTime, tempVar);
 				confSaveVar = 0;
+				lcd_clrscr();
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Fast Start Time"));
 				lcd_putc('1' + tempVar);
@@ -2125,6 +2132,7 @@ int main(void)
 						tempC = (int8_t)(((int16_t)tempC) * 9 / 5 + 32);
 					
 					snprintf(screenLineBuffer, sizeof(screenLineBuffer), "DIAG 0x%02X %3d%c %3ukl", mrbus_dev_addr, tempC, (status & STATUS_TEMP_DEG_F)?'F':'C', min(999,kloopsPerSec));
+					lcd_clrscr();
 					lcd_gotoxy(0,0);
 					lcd_puts(screenLineBuffer);
 
@@ -2263,6 +2271,7 @@ int main(void)
 			case SCREEN_CONF_PKTINT_SETUP:
 				tempVar16 = min(9999, max(updateXmitInterval, 1));
 				confSaveVar = 0;
+				lcd_clrscr();				
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Time Pkt Interval:"));
 				// Intentional fall-through
@@ -2397,6 +2406,7 @@ int main(void)
 					tempVar = 0x01;
 
 				confSaveVar = 0;
+				lcd_clrscr();				
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Master Clock Addr:"));
 
@@ -2482,6 +2492,7 @@ int main(void)
 
 			case SCREEN_CONF_TEMPU_SETUP:
 				confSaveVar = (status & STATUS_REAL_AMPM);
+				lcd_clrscr();				
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Temperature Units"));
 				drawSoftKeys_p(PSTR(" F  "),  PSTR(" C  "), PSTR("SAVE"), PSTR("CNCL"));
@@ -2532,6 +2543,7 @@ int main(void)
 					tempVar = 0x01;
 
 				confSaveVar = 0;
+				lcd_clrscr();				
 				lcd_gotoxy(0,0);
 				lcd_puts_p(PSTR("Temp/Humidity Addr:"));
 				// Intentional fall-through
