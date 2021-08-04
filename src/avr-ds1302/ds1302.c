@@ -40,6 +40,7 @@ void ds1302_init()
 	
 	DDRD |= _BV(PD3);
 	PORTD |= _BV(PD3);
+	
 }
 
 
@@ -119,5 +120,76 @@ void ds1302_transact(uint8_t command, uint8_t bytes, uint8_t* buffer)
 	return;
 }
 
+uint8_t ft_checksum(uint8_t *data)
+{
+	uint8_t checksum = 0xCC;
+	for (uint8_t i=0; i<3; i++)
+		checksum ^= data[i];
+	return checksum;
+}
 
+void ds1302_writeFastTime(TimeData* dt)
+{
+	uint8_t ds1302Buffer[10];
+	static uint8_t slot = 0;
+	uint8_t checksum = 0;
+	
+	slot++;
+	// Alternate between slots 
+	memset(ds1302Buffer, 0, sizeof(ds1302Buffer));
+
+	ds1302_transact(0x8E, 1, &ds1302Buffer[0]); // Disable write protect bit
+
+	ds1302Buffer[0] = dt->hours;
+	ds1302Buffer[1] = dt->minutes;
+	ds1302Buffer[2] = dt->seconds;
+
+	ds1302_transact((slot & 0x01)?0xC4:0xCA, 1, &ds1302Buffer[0]);
+	ds1302_transact((slot & 0x01)?0xC6:0xCC, 1, &ds1302Buffer[1]);
+	ds1302_transact((slot & 0x01)?0xC8:0xCE, 1, &ds1302Buffer[2]);
+
+	checksum = ft_checksum(&ds1302Buffer[0]);
+
+	ds1302Buffer[0] = (slot & 0x01)?1:2; // Start of FT page 1 / 2
+	ds1302_transact(0xC0, 1, ds1302Buffer);
+
+	ds1302Buffer[0] = checksum; // Start of FT page 1 / 2
+	ds1302_transact(0xC2, 1, ds1302Buffer);
+
+}
+
+bool ds1302_readFastTime(TimeData* dt)
+{
+	uint8_t ds1302Buffer[10];
+	uint8_t slot = 0;
+	uint8_t storedChecksum = 0;
+	
+	memset(ds1302Buffer, 0, sizeof(ds1302Buffer));    
+
+	// Read last valid slot indicator
+	ds1302_transact(0xC1, 1, &ds1302Buffer[0]);
+	slot = ds1302Buffer[0];
+	// Read checksum
+	ds1302_transact(0xC3, 1, &ds1302Buffer[0]);
+	storedChecksum = ds1302Buffer[0];
+
+	if (slot != 1 && slot != 2)
+		return false;
+
+	ds1302_transact((slot & 0x01)?0xC5:0xCB, 1, &ds1302Buffer[0]);
+	ds1302_transact((slot & 0x01)?0xC7:0xCD, 1, &ds1302Buffer[1]);
+	ds1302_transact((slot & 0x01)?0xC9:0xCF, 1, &ds1302Buffer[2]);
+
+	if (storedChecksum != ft_checksum(&ds1302Buffer[0]))
+		return false;
+
+	if (ds1302Buffer[0] > 23 || ds1302Buffer[1] > 59 || ds1302Buffer[2] > 59)
+		return false;
+
+	dt->hours = ds1302Buffer[0];
+	dt->minutes = ds1302Buffer[1];
+	dt->seconds = ds1302Buffer[2];
+
+	return true;
+}
 

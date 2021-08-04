@@ -553,8 +553,11 @@ void lcd_init(uint8_t dispAttr)
         DDR(LCD_DATA2_PORT) |= _BV(LCD_DATA2_PIN);
         DDR(LCD_DATA3_PORT) |= _BV(LCD_DATA3_PIN);
     }
-    delay(16000);        /* wait 16ms or more after power-on       */
-    
+    delay(4000L);        /* wait 16ms or more after power-on       */
+    delay(4000L);        /* wait 16ms or more after power-on       */
+    delay(4000L);        /* wait 16ms or more after power-on       */
+    delay(4000L);        /* wait 16ms or more after power-on       */
+
     /* initial write to lcd is 8bit */
     LCD_DATA1_PORT |= _BV(LCD_DATA1_PIN);  // _BV(LCD_FUNCTION)>>4;
     LCD_DATA0_PORT |= _BV(LCD_DATA0_PIN);  // _BV(LCD_FUNCTION_8BIT)>>4;
@@ -584,7 +587,11 @@ void lcd_init(uint8_t dispAttr)
     MCUCR = _BV(SRE) | _BV(SRW);
 
     /* reset LCD */
-    delay(16000);                           /* wait 16ms after power-on     */
+    delay(4000L);        /* wait 16ms or more after power-on       */
+    delay(4000L);        /* wait 16ms or more after power-on       */
+    delay(4000L);        /* wait 16ms or more after power-on       */
+    delay(4000L);        /* wait 16ms or more after power-on       */
+
     lcd_write(LCD_FUNCTION_8BIT_1LINE,0);   /* function set: 8bit interface */                   
     delay(4992);                            /* wait 5ms                     */
     lcd_write(LCD_FUNCTION_8BIT_1LINE,0);   /* function set: 8bit interface */                 

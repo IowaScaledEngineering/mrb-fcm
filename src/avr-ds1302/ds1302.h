@@ -22,6 +22,9 @@ LICENSE:
 #ifndef AVR_DS1302_H
 #define AVR_DS1302_H
 
+#include <stdint.h>
+#include <stdbool.h>
+
 /*
   All the configuration that needs be done is to set up the DDR, PORT, and BIT for each 
   DS1302 interface line
@@ -41,9 +44,21 @@ LICENSE:
 #define DS1302_SCLK_PORT   PORTB
 #define DS1302_SCLK_PIN    PB3
 
+typedef struct
+{
+	uint8_t seconds;
+	uint8_t minutes;
+	uint8_t hours;
+	uint8_t dayOfWeek;
+	uint8_t day;
+	uint8_t month;
+	uint16_t year;
+} TimeData;
 
 void ds1302_init();
 void ds1302_transact(uint8_t command, uint8_t bytes, uint8_t* buffer);
+bool ds1302_readFastTime(TimeData* dt);
+void ds1302_writeFastTime(TimeData* dt);
 
 #endif
 

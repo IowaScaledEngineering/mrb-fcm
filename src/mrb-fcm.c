@@ -128,17 +128,6 @@ void storeConfiguration(uint8_t confStatus)
 	eeprom_write_byte((uint8_t*)(uint16_t)EE_ADDR_CONF_FLAGS, (confStatus & (STATUS_FAST_AMPM | STATUS_REAL_AMPM | STATUS_FAST_HOLD | STATUS_TEMP_DEG_F)));
 }
 
-typedef struct
-{
-	uint8_t seconds;
-	uint8_t minutes;
-	uint8_t hours;
-	uint8_t dayOfWeek;
-	uint8_t day;
-	uint8_t month;
-	uint16_t year;
-} TimeData;
-
 TimeData realTime;
 TimeData fastTime;
 
@@ -564,7 +553,8 @@ void init(void)
 	ds1302_transact(0x8E, 1, ds1302Buffer);	
 
 	initTimeData(&fastTime);
-	FlashToFastTimeStart(&fastTime, 0);
+	if (!ds1302_readFastTime(&fastTime))
+		FlashToFastTimeStart(&fastTime, 0); // If the read failed, go get the last one
 	
 	status = eeprom_read_byte((uint8_t*)EE_ADDR_CONF_FLAGS);
 	
@@ -858,7 +848,7 @@ int main(void)
 					else
 						drawBigTime(&fastTime, status & STATUS_FAST_AMPM);
 						
-						
+					ds1302_writeFastTime(&fastTime);
 					// If we have a TH node and packet within timeout, alternate between real and TH
 					if (0 != thSourceAddr && 0 != thTimeout && thAlternator >= (TH_ALTERNATOR_MAX/2))
 						drawLittleTempHum();
