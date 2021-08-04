@@ -5,7 +5,7 @@ File:     $Id: $
 License:  GNU General Public License v3
 
 LICENSE:
-    Copyright (C) 2012-2015 Nathan D. Holmes
+    Copyright (C) 2012-2021 Nathan D. Holmes
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -639,9 +639,9 @@ void drawSplashScreen()
 	lcd_gotoxy(0,0);
 	lcd_puts("  Fast Clock Master ");
 	lcd_gotoxy(0,1);
-	lcd_puts("MRBus Enabled   v1.0");
+	lcd_puts("MRBus Enabled   v1.1");
 	lcd_gotoxy(0,2);
-	lcd_puts("2012 Iowa Scaled Eng");
+	lcd_puts("2021 Iowa Scaled Eng");
 	lcd_gotoxy(0,3);
 	lcd_puts("  www.iascaled.com  ");
 	_delay_ms(2000);
